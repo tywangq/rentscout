@@ -1,0 +1,20 @@
+# RentScout search profile + budget caps.
+# [search] is what you want; [budget] is what the agent may spend finding it.
+
+[search]
+name = "seattle-1b"
+city = "Seattle, WA"
+max_price = 2200
+min_beds = 1
+min_baths = 1
+neighborhoods = ["Capitol Hill", "Fremont", "Ballard", "University District"]
+excluded_keywords = ["basement", "no cats"]
+preferences = ["cats allowed", "in-unit laundry", "dishwasher", "natural light"]
+commute_anchor = "2101 4th Ave, Seattle, WA"
+max_commute_minutes = 35
+
+[budget]
+per_run_dollars = 0.05
+investigations_per_run = 10
+monthly_dollars = 2.0
+min_score_to_investigate = 6

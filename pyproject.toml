@@ -1,0 +1,21 @@
+[project]
+name = "rentscout"
+version = "0.1.0"
+description = "Autonomous housing-search agent with hard budget enforcement"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = []
+
+[dependency-groups]
+dev = ["pytest>=8"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/rentscout"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
