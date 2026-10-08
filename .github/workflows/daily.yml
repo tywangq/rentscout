@@ -7,6 +7,8 @@ name: daily
 # reasonable measures against scraping what we display. A daily run keeps the
 # cache warm (GitHub evicts entries unused for 7 days); if it is ever lost, the
 # next run starts a fresh database and re-triages the feed once.
+# The key prefix is versioned: v2 dropped the first database, whose cold start
+# was halted by the old triage budgeting, so the fix is exercised live.
 
 on:
   schedule:
@@ -37,8 +39,8 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: state
-          key: state-${{ github.run_id }}
-          restore-keys: state-
+          key: state-v2-${{ github.run_id }}
+          restore-keys: state-v2-
 
       - name: Live run
         id: live
@@ -58,7 +60,7 @@ jobs:
         uses: actions/cache/save@v4
         with:
           path: state
-          key: state-${{ github.run_id }}
+          key: state-v2-${{ github.run_id }}
 
       - name: Build page
         run: |
