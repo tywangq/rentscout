@@ -15,6 +15,7 @@ import json
 import sqlite3
 from datetime import date
 from html import escape
+from urllib.parse import quote_plus
 from pathlib import Path
 
 from .pipeline import MAX_PICKS
@@ -142,7 +143,11 @@ def _pick_html(p: dict, rank: int, profile: SearchProfile) -> str:
         f"<span class='score'>{escape(str(tri.get('score', '?')))}/10</span></header>"
         f"<p class='facts'>{escape(l['neighborhood'] or '')} &middot; "
         f"{escape(' · '.join(facts))} &middot; "
-        f"<a href='{escape(l['url'])}' rel='noopener nofollow'>map</a></p>"
+        f"<a href='{escape(l['url'])}' rel='noopener nofollow'>map</a> &middot; "
+        # RentCast returns no listing URL or photos; a search on the address
+        # finds the listing itself on whichever site is carrying it.
+        f"<a href='https://www.google.com/search?q={quote_plus(l['address'] + ' for rent')}' "
+        f"rel='noopener nofollow'>find the listing</a></p>"
         f"<div class='chips'>{verdicts}</div>"
         f"{_breakdown_html(profile, l, tri.get('verdicts', {}))}"
         f"<p>{escape(inv.get('note', ''))}</p>"
@@ -268,7 +273,8 @@ def render_site(
     return f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>RentScout Live</title>
+<title>RentScout — daily rental-search agent</title>
+<link rel="icon" type="image/png" href="favicon.png">
 <style>
 :root {{ --bg:#fbfaf8; --fg:#1d1d1b; --muted:#6b6a66; --card:#fff; --line:#e4e1db;
   --accent:#0f766e; --yes:#ccfbf1; --no:#f6dede; --unk:#ecebe7; }}
@@ -292,6 +298,9 @@ h3 {{ font-size:16px; margin:0; }} .muted, .facts {{ color:var(--muted); }}
 .pin {{ background:var(--accent); color:#fff; border-radius:50%; font:600 13px/26px sans-serif;
   text-align:center; box-shadow:0 1px 3px rgba(0,0,0,.35); }}
 .pin.anchor {{ background:#1d1d1b; }}
+.live {{ font-size:12px; font-weight:600; letter-spacing:.06em; text-transform:uppercase;
+  color:var(--accent); border:1px solid var(--accent); border-radius:999px; padding:2px 8px;
+  vertical-align:middle; }}
 .rank {{ display:inline-block; min-width:22px; height:22px; margin-right:8px; border-radius:50%;
   background:var(--accent); color:var(--bg); font-size:12px; line-height:22px; text-align:center; }}
 .breakdown {{ display:flex; flex-wrap:wrap; gap:4px; margin:4px 0 8px; font-size:12px; }}
@@ -312,7 +321,7 @@ th, td {{ border-bottom:1px solid var(--line); padding:6px 8px; text-align:left;
 .num {{ text-align:right; font-variant-numeric:tabular-nums; }}
 a {{ color:var(--accent); }}
 </style></head><body><main>
-<h1>\U0001F415\u200d\U0001F9BA RentScout Live</h1>
+<h1>\U0001F415\u200d\U0001F9BA RentScout <span class="live">live</span></h1>
 <p class="muted">A bounded autonomous agent searching Seattle rentals once a day on real
 listings (RentCast), real routing (OpenRouteService) and a real model, under budgets
 enforced in code. <a href="{REPO}">Source</a>.</p>

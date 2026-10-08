@@ -185,6 +185,12 @@ def _run_site(args: argparse.Namespace) -> None:
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     (out / "index.html").write_text(render_site(args.state, profile, caps, args.evals))
+    # A PNG rather than an SVG emoji: Safari ignores SVG favicons (LeaseHound
+    # learned this first; see its scripts/render_favicon.py).
+    from importlib import resources
+    (out / "favicon.png").write_bytes(
+        resources.files("rentscout.data").joinpath("favicon.png").read_bytes()
+    )
     print(f"site -> {out / 'index.html'}")
 
 
