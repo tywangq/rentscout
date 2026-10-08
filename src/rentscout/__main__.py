@@ -156,6 +156,19 @@ def _run_eval(args: argparse.Namespace) -> None:
                 print(f"  {v.run_id}  {v.listing_id}  {issue}")
 
 
+def _run_report(args: argparse.Namespace) -> None:
+    from pathlib import Path
+
+    from .report import build_report, render_markdown
+
+    profile, _ = load_profile(args.profile)
+    text = render_markdown(*build_report(args.state, profile))
+    if args.out:
+        Path(args.out).parent.mkdir(parents=True, exist_ok=True)
+        Path(args.out).write_text(text)
+    print(text, end="")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(prog="rentscout")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -179,6 +192,11 @@ def main() -> None:
     live.add_argument("--out", default="runs")
     live.add_argument("--llm", choices=["fake", "openai"], default="openai")
     live.add_argument("--model", default="gpt-4.1-mini")
+
+    rep = sub.add_parser("report", help="per-run monitoring table from a state db")
+    rep.add_argument("--state", required=True)
+    rep.add_argument("--profile", required=True)
+    rep.add_argument("--out", default="")
 
     ev = sub.add_parser("eval", help="run an evaluation suite")
     ev_sub = ev.add_subparsers(dest="suite", required=True)
@@ -210,6 +228,8 @@ def main() -> None:
     elif args.command == "replay":
         for day in FixtureSource.available_days(args.scenario):
             _run_day(args, day)
+    elif args.command == "report":
+        _run_report(args)
     elif args.command == "eval":
         _run_eval(args)
     elif args.command == "live":
