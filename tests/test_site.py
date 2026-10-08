@@ -45,3 +45,13 @@ def test_uninvestigated_picks_are_shown_and_labelled(store, run_day, tmp_path):
     html = render_site(str(tmp_path / "state.db"), profile, caps, str(tmp_path))
     assert html.count("class='pick'") >= 2
     assert "Not investigated this run" in html
+
+
+def test_funnel_counts_each_stage_from_the_trace(store, run_day, tmp_path):
+    run_day(1)
+    profile, caps = load_profile(PROFILE)
+    html = render_site(str(tmp_path / "state.db"), profile, caps, str(tmp_path))
+    # basic day 1: 7 new, 3 hard-filtered, 4 judged, all 4 investigated
+    for fragment in ("<b>7</b> New listings today", "<b>4</b> Pass hard limits",
+                     "<b>4</b> Judged by the model", "<b>4</b> Investigated with tools"):
+        assert fragment in html

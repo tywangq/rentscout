@@ -135,6 +135,38 @@ def _pick_html(p: dict) -> str:
     )
 
 
+def _funnel(conn: sqlite3.Connection, run_id: str, min_score: int) -> list[tuple[str, int, str]]:
+    """What the agent did with today's new listings, stage by stage."""
+    rows = conn.execute(
+        "SELECT action, detail FROM decisions WHERE run_id = ? AND listing_id IS NOT NULL",
+        (run_id,),
+    ).fetchall()
+    count = lambda a: sum(1 for r in rows if r["action"] == a)
+    triaged = [json.loads(r["detail"]) for r in rows if r["action"] == "triaged"]
+    hard, suppressed = count("hard_filtered"), count("suppressed_rejected")
+    capped = count("skipped_triage_cap")
+    new = hard + suppressed + capped + len(triaged)
+    return [
+        ("New listings today", new, "from RentCast, after dedupe against everything seen before"),
+        ("Pass hard limits", new - hard - suppressed, "price, beds, size, neighborhood; in code"),
+        ("Judged by the model", len(triaged), "freshest first, capped so triage cannot eat the budget"),
+        ("Score high enough", sum(1 for t in triaged if t.get("score", 0) >= min_score),
+         "score computed in code from the model's verdicts"),
+        ("Investigated with tools", count("investigated"), "the model chose which lookups to spend quota on"),
+    ]
+
+
+def _funnel_html(stages: list[tuple[str, int, str]]) -> str:
+    top = max((n for _, n, _ in stages), default=0) or 1
+    bars = "".join(
+        f"<div class='stage'><div class='stage-label'><b>{n}</b> {escape(label)}"
+        f"<span class='muted'> · {escape(why)}</span></div>"
+        f"<div class='bar'><span style='width:{max(2, round(100 * n / top))}%'></span></div></div>"
+        for label, n, why in stages
+    )
+    return f"<div class='funnel'>{bars}</div>"
+
+
 def render_site(
     db_path: str, profile: SearchProfile, caps: BudgetCaps, eval_dir: str = "evaluation"
 ) -> str:
@@ -143,6 +175,7 @@ def render_site(
     run = _latest_ok_run(conn)
     month = (run["run_date"] if run else date.today().isoformat())[:7]
     picks = _picks(conn, run["run_id"], caps.min_score_to_investigate) if run else []
+    funnel = _funnel(conn, run["run_id"], caps.min_score_to_investigate) if run else []
     spend, calls = _month_spend(conn, month), _api_calls(conn, month)
     conn.close()
     rows, _ = build_report(db_path, profile)
@@ -179,6 +212,11 @@ h3 {{ font-size:16px; margin:0; }} .muted, .facts {{ color:var(--muted); }}
 .stats {{ display:flex; flex-wrap:wrap; gap:10px; margin:16px 0; }}
 .stat {{ background:var(--card); border:1px solid var(--line); border-radius:8px; padding:10px 14px; }}
 .stat b {{ display:block; font-size:18px; }}
+.funnel {{ display:grid; gap:10px; margin:8px 0 4px; }}
+.stage-label {{ font-size:14px; margin-bottom:3px; }}
+.stage-label b {{ font-size:16px; font-variant-numeric:tabular-nums; }}
+.bar {{ height:10px; border-radius:5px; background:var(--unk); overflow:hidden; }}
+.bar span {{ display:block; height:100%; background:var(--accent); border-radius:5px; }}
 .pick {{ background:var(--card); border:1px solid var(--line); border-radius:10px;
   padding:14px 16px; margin:12px 0; }}
 .pick header {{ display:flex; justify-content:space-between; gap:12px; align-items:baseline; }}
@@ -203,6 +241,8 @@ enforced in code. <a href="{REPO}">Source</a>.</p>
   <div class="stat"><b>${caps.per_run_dollars:.2f}</b>hard cap per run</div>
   <div class="stat"><b>{calls} / {caps.rentcast_requests_per_month}</b>RentCast requests this month</div>
 </div>
+<h2>What the agent did today</h2>
+{_funnel_html(funnel) if funnel else "<p>No completed run yet.</p>"}
 <h2>Today's picks</h2>
 <p class="muted">Profile: {escape(profile.name)}, up to ${profile.max_price:,}, commute to
 {escape(profile.commute_anchor)} measured by bike (routing has no transit).
