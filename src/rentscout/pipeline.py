@@ -23,6 +23,9 @@ from .tools import ToolRegistry
 from .triage import FALLBACK_SCORE, TriageScore, triage
 
 
+MAX_PICKS = 10  # a digest is read by a person; the rest stay in the trace
+
+
 @dataclass(frozen=True)
 class RunResult:
     run_id: str
@@ -52,8 +55,34 @@ def daily_run(
         store.record_refused_run(run_id, run_date, str(exc))
         raise
     store.start_run(run_id, run_date)
+    try:
+        return _run(
+            run_id=run_id, guard=guard, source=source, store=store,
+            profile=profile, caps=caps, llm=llm, registry=registry,
+            run_date=run_date, out_dir=out_dir,
+        )
+    except BaseException as exc:
+        # Any failure after start (fetch, network, a bug) must leave a closed,
+        # explained run in the trace; a live run once stayed "running" forever.
+        store.finish_run(run_id, f"failed: {type(exc).__name__}: {exc}", guard.spent, None)
+        raise
 
-    reconciled = store.reconcile(run_date, source.fetch(), snapshot=source.snapshot)
+
+def _run(
+    *,
+    run_id: str,
+    guard: BudgetGuard,
+    source: ListingSource,
+    store: Store,
+    profile: SearchProfile,
+    caps: BudgetCaps,
+    llm: LLMClient,
+    registry: ToolRegistry,
+    run_date: str,
+    out_dir: str | Path,
+) -> RunResult:
+    fetched = source.fetch()
+    reconciled = store.reconcile(run_date, fetched, snapshot=source.snapshot)
 
     passed, filtered = hard_filter(profile, reconciled.fresh)
     for listing, reason in filtered:
@@ -101,6 +130,12 @@ def daily_run(
             skipped_budget += 1
             store.record_decision(run_id, listing.id, "skipped_budget")
             continue
+        if guard.investigations_used >= caps.investigations_per_run:
+            # No metered lookups left: an investigation now could only restate
+            # triage, and live runs showed the model guessing commutes instead.
+            # Rationing, not a halt: the digest is complete, just not deep for all.
+            store.record_decision(run_id, listing.id, "skipped_quota")
+            continue
         try:
             note = investigate(llm, guard, profile, listing, ts, registry)
             notes[listing.id] = note.note
@@ -125,7 +160,7 @@ def daily_run(
         )
         for l in ranked
         if scores[l.id].score >= caps.min_score_to_investigate
-    ]
+    ][:MAX_PICKS]
     digest = render_digest(
         DigestData(
             run_date=run_date,

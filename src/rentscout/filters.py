@@ -31,7 +31,7 @@ def _violation(profile: SearchProfile, listing: Listing) -> str | None:
         return f"too few beds ({listing.beds} < {profile.min_beds})"
     if listing.baths < profile.min_baths:
         return f"too few baths ({listing.baths} < {profile.min_baths})"
-    if profile.neighborhoods and listing.neighborhood not in profile.neighborhoods:
+    if profile.neighborhoods and not (set(profile.neighborhoods) & listing.area_names()):
         return f"outside target neighborhoods ({listing.neighborhood or 'unknown'})"
     text = f"{listing.description} {listing.address}".lower()
     for keyword in profile.excluded_keywords:

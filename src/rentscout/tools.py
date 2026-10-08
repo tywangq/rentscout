@@ -53,13 +53,19 @@ class ToolRegistry:
             return tool.fn(**call.arguments)
         except TypeError as exc:
             return f"ERROR: bad arguments for {call.name}: {exc}"
+        except Exception as exc:  # a tool failure is information for the model, not a crash
+            return f"ERROR: {call.name} failed ({type(exc).__name__}); treat it as unknown"
 
 
-def build_registry(store: Store, commutes: dict[str, int]) -> ToolRegistry:
-    """M0 tool set. commute_time reads a fixture table; a real transit API
-    replaces the lookup in M1 without touching the loop."""
+def build_registry(
+    store: Store, commutes: dict[str, int] | Callable[[str], str]
+) -> ToolRegistry:
+    """commute_time reads a fixture table offline, or calls live routing
+    (ORSCommute) when given a callable; the loop is the same either way."""
 
     def commute_time(address: str) -> str:
+        if callable(commutes):  # live routing (ORSCommute)
+            return commutes(address)
         minutes = commutes.get(address)
         return str(minutes) if minutes is not None else "unknown"
 

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 
 
@@ -16,6 +17,9 @@ class Listing:
     sqft: int | None
     description: str
     available: str  # ISO date, or "" if unknown
+    # Structured facts from sources that carry no free text (RentCast): sorted
+    # (key, value) pairs so the dataclass stays frozen and hashable.
+    attributes: tuple[tuple[str, object], ...] = ()
 
     @classmethod
     def from_dict(cls, source: str, d: dict) -> "Listing":
@@ -31,7 +35,16 @@ class Listing:
             sqft=int(d["sqft"]) if d.get("sqft") is not None else None,
             description=d.get("description", ""),
             available=d.get("available", ""),
+            attributes=attrs_from(d.get("attributes") or {}),
         )
+
+    @property
+    def attrs(self) -> dict:
+        return dict(self.attributes)
+
+    def area_names(self) -> set[str]:
+        """Every neighborhood this listing may belong to (zip codes span several)."""
+        return {self.neighborhood, *self.attrs.get("neighborhoods", ())} - {""}
 
     def public_fields(self) -> dict:
         """The subset shown to the LLM. description is untrusted landlord text."""
@@ -45,4 +58,17 @@ class Listing:
             "sqft": self.sqft,
             "description": self.description,
             "available": self.available,
+            **({"details": self.attrs} if self.attributes else {}),
         }
+
+
+def attrs_from(d: dict) -> tuple[tuple[str, object], ...]:
+    return tuple(
+        sorted((k, tuple(v) if isinstance(v, list) else v) for k, v in d.items())
+    )
+
+
+def attrs_to_json(attributes: tuple[tuple[str, object], ...]) -> str:
+    return json.dumps(
+        {k: list(v) if isinstance(v, tuple) else v for k, v in attributes}
+    )

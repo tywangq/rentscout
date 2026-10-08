@@ -1,0 +1,27 @@
+# Live profile for real RentCast data. RentCast carries no listing description,
+# so preferences are about what it does carry: size, value, type, freshness.
+# Neighborhoods are matched through a coarse zip-code map (data/seattle_zips.json).
+
+[search]
+name = "seattle-1b-live"
+city = "Seattle, WA"
+max_price = 2200
+min_beds = 1
+min_baths = 1
+neighborhoods = ["Capitol Hill", "Fremont", "Wallingford", "Ballard", "University District", "Queen Anne", "South Lake Union"]
+excluded_keywords = []
+preferences = [
+  "at least 600 sq ft",
+  "good value: low price per square foot for the area",
+  "apartment or condo rather than a single-family house",
+  "fresh listing: under a week on the market",
+]
+commute_anchor = "2101 4th Ave, Seattle, WA"
+max_commute_minutes = 35
+
+[budget]
+per_run_dollars = 0.05
+investigations_per_run = 10
+monthly_dollars = 2.0
+min_score_to_investigate = 6
+rentcast_requests_per_month = 40

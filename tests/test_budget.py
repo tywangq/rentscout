@@ -44,7 +44,11 @@ def test_quota_exhaustion_degrades_gracefully(store, run_day):
     result = run_day(1, investigations_per_run=2)
     assert not result.halted  # quota is rationing, not a halt
     assert "Investigations: 2 of 2" in result.digest
-    assert "Commute unknown" in result.digest  # later candidates hit the quota wall
+    # Candidates past the quota are not investigated at all: with no metered
+    # lookups left, live models guessed the commute instead of saying unknown.
+    actions = [row["action"] for row in store.decisions(result.run_id)]
+    assert actions.count("investigated") == 2
+    assert actions.count("skipped_quota") == 2
     assert store.run(result.run_id)["status"] == "ok"
 
 

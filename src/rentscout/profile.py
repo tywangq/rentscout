@@ -17,6 +17,8 @@ class SearchProfile:
     preferences: tuple[str, ...]  # soft, scored by the LLM
     commute_anchor: str
     max_commute_minutes: int
+    # OpenRouteService profile; it has no transit, so the live default is cycling.
+    commute_mode: str = "cycling-regular"
 
 
 @dataclass(frozen=True)
@@ -25,6 +27,8 @@ class BudgetCaps:
     investigations_per_run: int  # quota of metered (deep) tool calls
     monthly_dollars: float  # ledger cap; runs refuse to start past it
     min_score_to_investigate: int = 6
+    # External API calls are a budget too: RentCast's free tier is 50/month.
+    rentcast_requests_per_month: int = 40
 
 
 def load_profile(path: str | Path) -> tuple[SearchProfile, BudgetCaps]:
@@ -41,11 +45,13 @@ def load_profile(path: str | Path) -> tuple[SearchProfile, BudgetCaps]:
         preferences=tuple(s.get("preferences", [])),
         commute_anchor=s["commute_anchor"],
         max_commute_minutes=int(s["max_commute_minutes"]),
+        commute_mode=s.get("commute_mode", "cycling-regular"),
     )
     caps = BudgetCaps(
         per_run_dollars=float(b["per_run_dollars"]),
         investigations_per_run=int(b["investigations_per_run"]),
         monthly_dollars=float(b["monthly_dollars"]),
         min_score_to_investigate=int(b.get("min_score_to_investigate", 6)),
+        rentcast_requests_per_month=int(b.get("rentcast_requests_per_month", 40)),
     )
     return profile, caps

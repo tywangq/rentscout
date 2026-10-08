@@ -14,7 +14,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 
-from .models import Listing
+from .models import Listing, attrs_from, attrs_to_json
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS listings (
@@ -29,6 +29,7 @@ CREATE TABLE IF NOT EXISTS listings (
     sqft INTEGER,
     description TEXT,
     available TEXT,
+    attributes TEXT NOT NULL DEFAULT '{}',
     status TEXT NOT NULL DEFAULT 'active',
     first_seen TEXT NOT NULL,
     last_seen TEXT NOT NULL
@@ -58,6 +59,25 @@ CREATE TABLE IF NOT EXISTS spend_ledger (
     dollars REAL NOT NULL,
     detail TEXT,
     created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS api_usage (
+    month TEXT NOT NULL,
+    api TEXT NOT NULL,
+    calls INTEGER NOT NULL,
+    PRIMARY KEY (month, api)
+);
+CREATE TABLE IF NOT EXISTS commute_cache (
+    origin TEXT NOT NULL,
+    destination TEXT NOT NULL,
+    mode TEXT NOT NULL,
+    minutes INTEGER NOT NULL,
+    created_at TEXT NOT NULL,
+    PRIMARY KEY (origin, destination, mode)
+);
+CREATE TABLE IF NOT EXISTS geocode_cache (
+    address TEXT PRIMARY KEY,
+    lat REAL NOT NULL,
+    lon REAL NOT NULL
 );
 CREATE TABLE IF NOT EXISTS runs (
     run_id TEXT PRIMARY KEY,
@@ -94,7 +114,15 @@ class Store:
         self._conn = sqlite3.connect(str(path))
         self._conn.row_factory = sqlite3.Row
         self._conn.executescript(_SCHEMA)
+        self._migrate()
         self._conn.commit()
+
+    def _migrate(self) -> None:
+        cols = {r["name"] for r in self._conn.execute("PRAGMA table_info(listings)")}
+        if "attributes" not in cols:  # databases created before RentCast
+            self._conn.execute(
+                "ALTER TABLE listings ADD COLUMN attributes TEXT NOT NULL DEFAULT '{}'"
+            )
 
     def close(self) -> None:
         self._conn.close()
@@ -131,13 +159,14 @@ class Store:
     def _insert_listing(self, listing: Listing, run_date: str) -> None:
         self._conn.execute(
             "INSERT INTO listings (id, source, url, address, neighborhood, price,"
-            " beds, baths, sqft, description, available, status, first_seen, last_seen)"
-            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?)",
+            " beds, baths, sqft, description, available, attributes, status,"
+            " first_seen, last_seen)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?)",
             (
                 listing.id, listing.source, listing.url, listing.address,
                 listing.neighborhood, listing.price, listing.beds, listing.baths,
                 listing.sqft, listing.description, listing.available,
-                run_date, run_date,
+                attrs_to_json(listing.attributes), run_date, run_date,
             ),
         )
         self._record_price(listing.id, run_date, listing.price)
@@ -148,11 +177,12 @@ class Store:
         self._conn.execute(
             "UPDATE listings SET url = ?, address = ?, neighborhood = ?, price = ?,"
             " beds = ?, baths = ?, sqft = ?, description = ?, available = ?,"
-            " status = 'active', last_seen = ? WHERE id = ?",
+            " attributes = ?, status = 'active', last_seen = ? WHERE id = ?",
             (
                 listing.url, listing.address, listing.neighborhood, listing.price,
                 listing.beds, listing.baths, listing.sqft, listing.description,
-                listing.available, run_date, listing.id,
+                listing.available, attrs_to_json(listing.attributes), run_date,
+                listing.id,
             ),
         )
         if record_price:
@@ -184,7 +214,60 @@ class Store:
             price=row["price"], beds=row["beds"], baths=row["baths"],
             sqft=row["sqft"], description=row["description"],
             available=row["available"],
+            attributes=attrs_from(json.loads(row["attributes"] or "{}")),
         )
+
+    # -- external API quota -------------------------------------------------
+
+    def api_calls(self, month: str, api: str) -> int:
+        row = self._conn.execute(
+            "SELECT calls FROM api_usage WHERE month = ? AND api = ?", (month, api)
+        ).fetchone()
+        return row["calls"] if row else 0
+
+    def add_api_call(self, month: str, api: str) -> None:
+        self._conn.execute(
+            "INSERT INTO api_usage (month, api, calls) VALUES (?, ?, 1)"
+            " ON CONFLICT (month, api) DO UPDATE SET calls = calls + 1",
+            (month, api),
+        )
+        self._conn.commit()
+
+    def listing_attributes_by_address(self, address: str) -> dict | None:
+        row = self._conn.execute(
+            "SELECT attributes FROM listings WHERE address = ? ORDER BY last_seen DESC",
+            (address,),
+        ).fetchone()
+        return json.loads(row["attributes"] or "{}") if row else None
+
+    # -- routing caches -----------------------------------------------------
+
+    def cached_commute(self, origin: str, destination: str, mode: str) -> int | None:
+        row = self._conn.execute(
+            "SELECT minutes FROM commute_cache"
+            " WHERE origin = ? AND destination = ? AND mode = ?",
+            (origin, destination, mode),
+        ).fetchone()
+        return row["minutes"] if row else None
+
+    def cache_commute(self, origin: str, destination: str, mode: str, minutes: int) -> None:
+        self._conn.execute(
+            "INSERT OR REPLACE INTO commute_cache VALUES (?, ?, ?, ?, ?)",
+            (origin, destination, mode, minutes, _now()),
+        )
+        self._conn.commit()
+
+    def cached_geocode(self, address: str) -> tuple[float, float] | None:
+        row = self._conn.execute(
+            "SELECT lat, lon FROM geocode_cache WHERE address = ?", (address,)
+        ).fetchone()
+        return (row["lat"], row["lon"]) if row else None
+
+    def cache_geocode(self, address: str, lat: float, lon: float) -> None:
+        self._conn.execute(
+            "INSERT OR REPLACE INTO geocode_cache VALUES (?, ?, ?)", (address, lat, lon)
+        )
+        self._conn.commit()
 
     # -- feedback ------------------------------------------------------------
 
