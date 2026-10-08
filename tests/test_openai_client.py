@@ -86,3 +86,11 @@ def test_tool_round_trip_keeps_call_ids_paired():
 def test_triage_tolerates_fenced_json():
     assert json.loads(_strip_fence('```json\n[{"id": "a"}]\n```')) == [{"id": "a"}]
     assert _strip_fence('[1]') == '[1]'
+
+
+def test_schema_is_sent_as_strict_structured_output():
+    llm, fake = _client(_resp(text='{"listings": []}'))
+    llm.complete([{"role": "user", "content": "x"}], schema={"type": "object"})
+    fmt = fake.requests[0]["text"]["format"]
+    assert fmt["type"] == "json_schema" and fmt["strict"] is True
+    assert fmt["schema"] == {"type": "object"}

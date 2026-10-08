@@ -39,7 +39,10 @@ class LLMClient(Protocol):
     model: str
 
     def complete(
-        self, messages: list[dict], tools: list[dict] | None = None
+        self,
+        messages: list[dict],
+        tools: list[dict] | None = None,
+        schema: dict | None = None,
     ) -> LLMReply: ...
 
 
@@ -69,7 +72,10 @@ class ScriptedLLM:
         self._replies = list(replies)
 
     def complete(
-        self, messages: list[dict], tools: list[dict] | None = None
+        self,
+        messages: list[dict],
+        tools: list[dict] | None = None,
+        schema: dict | None = None,
     ) -> LLMReply:
         if not self._replies:
             raise AssertionError("ScriptedLLM: script exhausted")
@@ -88,7 +94,10 @@ class RuleBasedLLM:
     model = "rule-based-fake"
 
     def complete(
-        self, messages: list[dict], tools: list[dict] | None = None
+        self,
+        messages: list[dict],
+        tools: list[dict] | None = None,
+        schema: dict | None = None,
     ) -> LLMReply:
         payload = extract_payload(messages)
         task = payload["task"]
@@ -102,31 +111,20 @@ class RuleBasedLLM:
 
     def _triage(self, messages: list[dict], payload: dict) -> LLMReply:
         profile = payload["profile"]
-        scores = []
+        entries = []
         for listing in payload["listings"]:
-            score, matched = self._score(profile, listing)
+            description = listing.get("description", "").lower()
+            verdicts = {
+                p: "yes" if p.lower() in description else "unknown"
+                for p in profile["preferences"]
+            }
+            matched = [p for p, v in verdicts.items() if v == "yes"]
             reason = (
                 "matches: " + ", ".join(matched) if matched else "no preference hits"
             )
-            scores.append(
-                {"id": listing["id"], "score": score, "reason": reason}
-            )
-        text = json.dumps(scores)
+            entries.append({"id": listing["id"], "verdicts": verdicts, "reason": reason})
+        text = json.dumps({"listings": entries})
         return LLMReply(text=text, usage=_estimate_usage(messages, text))
-
-    @staticmethod
-    def _score(profile: dict, listing: dict) -> tuple[int, list[str]]:
-        score = 5
-        if listing["price"] <= 0.9 * profile["max_price"]:
-            score += 2
-        elif listing["price"] <= profile["max_price"]:
-            score += 1
-        description = listing.get("description", "").lower()
-        matched = [p for p in profile["preferences"] if p.lower() in description]
-        score += min(3, len(matched))
-        if listing.get("neighborhood") in profile["neighborhoods"]:
-            score += 1
-        return max(0, min(10, score)), matched
 
     # -- investigation -----------------------------------------------------
 
@@ -178,11 +176,19 @@ class OpenAIClient:
         self._client = client
 
     def complete(
-        self, messages: list[dict], tools: list[dict] | None = None
+        self,
+        messages: list[dict],
+        tools: list[dict] | None = None,
+        schema: dict | None = None,
     ) -> LLMReply:
         kwargs = {"model": self.model, "input": to_responses_input(messages)}
         if tools:
             kwargs["tools"] = tools
+        if schema:  # structured output: the API guarantees a reply matching it
+            kwargs["text"] = {
+                "format": {"type": "json_schema", "name": "reply",
+                           "schema": schema, "strict": True}
+            }
         resp = self._client.responses.create(**kwargs)
         calls = tuple(
             ToolCall(

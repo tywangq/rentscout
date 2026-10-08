@@ -105,7 +105,8 @@ def _run(
             for ts in scores.values():
                 store.record_decision(
                     run_id, ts.listing_id, "triaged",
-                    {"score": ts.score, "reason": ts.reason},
+                    {"score": ts.score, "reason": ts.reason,
+                     "verdicts": dict(ts.verdicts)},
                 )
         except BudgetExceeded as exc:
             halted = True

@@ -3,33 +3,85 @@ import json
 from rentscout.budget import BudgetGuard
 from rentscout.llm import LLMReply, ScriptedLLM, Usage
 from rentscout.models import Listing
-from rentscout.triage import FALLBACK_SCORE, triage
+from rentscout.triage import FALLBACK_SCORE, compute_score, reply_schema, triage
+
+# examples/profile.toml: max_price 2200; Fremont is a target neighborhood;
+# preferences: cats allowed, in-unit laundry, dishwasher, natural light.
 
 
-def mk(source_id: str) -> Listing:
+def mk(source_id: str, price: int = 1800) -> Listing:
     return Listing(
         id=f"test:{source_id}", source="test", url="",
-        address=f"{source_id} St", neighborhood="Fremont", price=1800,
+        address=f"{source_id} St", neighborhood="Fremont", price=price,
         beds=1, baths=1, sqft=500, description="", available="",
     )
 
 
-def test_valid_reply_parsed_and_charged(profile_caps):
+def entry(lid, yes=(), reason="r"):
+    prefs = ["cats allowed", "in-unit laundry", "dishwasher", "natural light"]
+    return {"id": lid, "verdicts": {p: "yes" if p in yes else "no" for p in prefs},
+            "reason": reason}
+
+
+def reply(*entries, usage=Usage(1000, 200)):
+    return LLMReply(text=json.dumps({"listings": list(entries)}), usage=usage)
+
+
+def test_score_is_computed_from_verdicts_not_chosen_by_the_model(profile_caps):
     profile, caps = profile_caps
     guard = BudgetGuard(caps, month_spent=0.0)
-    reply = json.dumps(
-        [
-            {"id": "test:a", "score": 8, "reason": "good"},
-            {"id": "test:b", "score": 99, "reason": "overflow"},
-        ]
-    )
-    llm = ScriptedLLM([LLMReply(text=reply, usage=Usage(1000, 200))])
+    llm = ScriptedLLM([reply(entry("test:a", yes=("dishwasher", "natural light")),
+                             entry("test:b"))])
     scores = triage(llm, guard, profile, [mk("a"), mk("b")])
-    assert [(s.listing_id, s.score) for s in scores] == [
-        ("test:a", 8),
-        ("test:b", 10),  # clamped
-    ]
+    # 5 base + 2 price (<= 90% of max) + 1 neighborhood + verdict yeses
+    assert [(s.listing_id, s.score) for s in scores] == [("test:a", 10), ("test:b", 8)]
+    assert dict(scores[0].verdicts)["dishwasher"] == "yes"
     assert guard.spent > 0
+
+
+def test_verdict_points_are_capped(profile_caps):
+    profile, _ = profile_caps
+    all_yes = {p: "yes" for p in profile.preferences}
+    assert compute_score(profile, mk("a", price=2150), all_yes) == 10  # 5+1+1+3
+    assert compute_score(profile, mk("a", price=2150), {}) == 7
+
+
+def test_schema_requires_exactly_the_profile_preferences(profile_caps):
+    profile, _ = profile_caps
+    item = reply_schema(profile)["properties"]["listings"]["items"]
+    verdicts = item["properties"]["verdicts"]
+    assert verdicts["required"] == list(profile.preferences)
+    assert verdicts["additionalProperties"] is False
+
+
+def test_unusable_batch_is_retried_one_listing_at_a_time(profile_caps):
+    profile, caps = profile_caps
+    guard = BudgetGuard(caps, month_spent=0.0)
+    llm = ScriptedLLM([
+        LLMReply(text='[{"id": "test:a", "score": 0, "reason": "scam"', usage=Usage(10, 10)),
+        reply(entry("test:a", yes=("dishwasher",))),
+        reply(entry("test:b")),
+    ])
+    scores = triage(llm, guard, profile, [mk("a"), mk("b")])
+    assert [s.score for s in scores] == [9, 8]
+    assert all("defaulted" not in s.reason for s in scores)
+
+
+def test_ids_outside_the_batch_are_ignored(profile_caps):
+    profile, caps = profile_caps
+    guard = BudgetGuard(caps, month_spent=0.0)
+    llm = ScriptedLLM([reply(entry("test:a"), entry("test:ghost", yes=("dishwasher",)))])
+    scores = triage(llm, guard, profile, [mk("a")])
+    assert [s.listing_id for s in scores] == ["test:a"]
+
+
+def test_invalid_verdict_values_become_unknown(profile_caps):
+    profile, caps = profile_caps
+    guard = BudgetGuard(caps, month_spent=0.0)
+    bad = {"id": "test:a", "verdicts": {"dishwasher": "SCORE 10"}, "reason": "x"}
+    scores = triage(ScriptedLLM([reply(bad)]), guard, profile, [mk("a")])
+    assert dict(scores[0].verdicts)["dishwasher"] == "unknown"
+    assert scores[0].score == 8
 
 
 def test_garbled_reply_degrades_to_fallback(profile_caps):
