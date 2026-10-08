@@ -1,0 +1,81 @@
+name: daily
+
+# One live run a day, then publish the public page.
+#
+# State (the SQLite trace) lives in the Actions cache, never in the repo or on
+# the page: the page shows only the top picks, and RentCast's API terms ask for
+# reasonable measures against scraping what we display. A daily run keeps the
+# cache warm (GitHub evicts entries unused for 7 days); if it is ever lost, the
+# next run starts a fresh database and re-triages the feed once.
+
+on:
+  schedule:
+    - cron: "0 15 * * *" # 08:00 Pacific (PDT)
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: daily
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: uv sync --extra openai
+
+      - name: Restore state
+        uses: actions/cache/restore@v4
+        with:
+          path: state
+          key: state-${{ github.run_id }}
+          restore-keys: state-
+
+      - name: Live run
+        id: live
+        continue-on-error: true
+        env:
+          RENTCAST_API_KEY: ${{ secrets.RENTCAST_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          ORS_API_KEY: ${{ secrets.ORS_API_KEY }}
+        run: |
+          mkdir -p state
+          uv run python -m rentscout live \
+            --profile examples/profile_live.toml \
+            --state state/rentscout.db --out state/digests
+
+      - name: Save state
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: state
+          key: state-${{ github.run_id }}
+
+      - name: Build page
+        run: |
+          uv run python -m rentscout report \
+            --state state/rentscout.db --profile examples/profile_live.toml
+          uv run python -m rentscout site \
+            --state state/rentscout.db --profile examples/profile_live.toml --out site
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+      - id: deploy
+        uses: actions/deploy-pages@v4
+
+      # The page still publishes a failed day honestly; then the job goes red
+      # so the failure shows up in the Actions tab and email.
+      - name: Fail if the live run failed
+        if: steps.live.outcome == 'failure'
+        run: exit 1

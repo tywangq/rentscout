@@ -159,6 +159,9 @@ def _run_eval(args: argparse.Namespace) -> None:
 def _run_report(args: argparse.Namespace) -> None:
     from pathlib import Path
 
+    Path(args.state).parent.mkdir(parents=True, exist_ok=True)
+    Store(args.state).close()  # a failed first run must still render a page
+
     from .report import build_report, render_markdown
 
     profile, _ = load_profile(args.profile)
@@ -167,6 +170,21 @@ def _run_report(args: argparse.Namespace) -> None:
         Path(args.out).parent.mkdir(parents=True, exist_ok=True)
         Path(args.out).write_text(text)
     print(text, end="")
+
+
+def _run_site(args: argparse.Namespace) -> None:
+    from pathlib import Path
+
+    Path(args.state).parent.mkdir(parents=True, exist_ok=True)
+    Store(args.state).close()  # a failed first run must still render a page
+
+    from .site import render_site
+
+    profile, caps = load_profile(args.profile)
+    out = Path(args.out)
+    out.mkdir(parents=True, exist_ok=True)
+    (out / "index.html").write_text(render_site(args.state, profile, caps, args.evals))
+    print(f"site -> {out / 'index.html'}")
 
 
 def main() -> None:
@@ -197,6 +215,12 @@ def main() -> None:
     rep.add_argument("--state", required=True)
     rep.add_argument("--profile", required=True)
     rep.add_argument("--out", default="")
+
+    site = sub.add_parser("site", help="build the static public page")
+    site.add_argument("--state", required=True)
+    site.add_argument("--profile", required=True)
+    site.add_argument("--evals", default="evaluation")
+    site.add_argument("--out", default="site")
 
     ev = sub.add_parser("eval", help="run an evaluation suite")
     ev_sub = ev.add_subparsers(dest="suite", required=True)
@@ -230,6 +254,8 @@ def main() -> None:
             _run_day(args, day)
     elif args.command == "report":
         _run_report(args)
+    elif args.command == "site":
+        _run_site(args)
     elif args.command == "eval":
         _run_eval(args)
     elif args.command == "live":
