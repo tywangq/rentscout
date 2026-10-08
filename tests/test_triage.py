@@ -33,17 +33,21 @@ def test_score_is_computed_from_verdicts_not_chosen_by_the_model(profile_caps):
     llm = ScriptedLLM([reply(entry("test:a", yes=("dishwasher", "natural light")),
                              entry("test:b"))])
     scores = triage(llm, guard, profile, [mk("a"), mk("b")])
-    # 5 base + 2 price (<= 90% of max) + 1 neighborhood + verdict yeses
-    assert [(s.listing_id, s.score) for s in scores] == [("test:a", 10), ("test:b", 8)]
+    # 3 base + 2 price (<= 90% of max) + 1 neighborhood + yeses - noes
+    assert [(s.listing_id, s.score) for s in scores] == [("test:a", 6), ("test:b", 2)]
     assert dict(scores[0].verdicts)["dishwasher"] == "yes"
     assert guard.spent > 0
 
 
-def test_verdict_points_are_capped(profile_caps):
+def test_no_verdicts_cost_points(profile_caps):
+    # A cheap listing that fails the renter's preferences must not rank high:
+    # the first live cold start put 170 sq ft rooms at 10/10.
     profile, _ = profile_caps
     all_yes = {p: "yes" for p in profile.preferences}
-    assert compute_score(profile, mk("a", price=2150), all_yes) == 10  # 5+1+1+3
-    assert compute_score(profile, mk("a", price=2150), {}) == 7
+    all_no = {p: "no" for p in profile.preferences}
+    assert compute_score(profile, mk("a", price=2150), all_yes) == 9  # 3+1+1+4
+    assert compute_score(profile, mk("a", price=2150), {}) == 5
+    assert compute_score(profile, mk("a", price=1000), all_no) == 2  # 3+2+1-4
 
 
 def test_schema_requires_exactly_the_profile_preferences(profile_caps):
@@ -63,7 +67,7 @@ def test_unusable_batch_is_retried_one_listing_at_a_time(profile_caps):
         reply(entry("test:b")),
     ])
     scores = triage(llm, guard, profile, [mk("a"), mk("b")])
-    assert [s.score for s in scores] == [9, 8]
+    assert [s.score for s in scores] == [4, 2]
     assert all("defaulted" not in s.reason for s in scores)
 
 
@@ -81,7 +85,7 @@ def test_invalid_verdict_values_become_unknown(profile_caps):
     bad = {"id": "test:a", "verdicts": {"dishwasher": "SCORE 10"}, "reason": "x"}
     scores = triage(ScriptedLLM([reply(bad)]), guard, profile, [mk("a")])
     assert dict(scores[0].verdicts)["dishwasher"] == "unknown"
-    assert scores[0].score == 8
+    assert scores[0].score == 6
 
 
 def test_garbled_reply_degrades_to_fallback(profile_caps):

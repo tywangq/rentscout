@@ -50,15 +50,21 @@ class TriageScore:
 
 
 def compute_score(profile: SearchProfile, listing: Listing, verdicts: dict[str, str]) -> int:
-    """The score is code, not model output: price, area and verdict counts."""
-    score = 5
+    """The score is code, not model output: price, area and verdicts.
+
+    Each yes adds a point and each no takes one away. The first version only
+    rewarded yes from a base of 5, so cheap listings that failed the renter's
+    size preference still reached 10/10 on the first live cold start.
+    """
+    score = 3
     if listing.price <= 0.9 * profile.max_price:
         score += 2
     elif listing.price <= profile.max_price:
         score += 1
     if profile.neighborhoods and set(profile.neighborhoods) & listing.area_names():
         score += 1
-    score += min(3, sum(1 for v in verdicts.values() if v == "yes"))
+    score += sum(1 for v in verdicts.values() if v == "yes")
+    score -= sum(1 for v in verdicts.values() if v == "no")
     return max(0, min(10, score))
 
 

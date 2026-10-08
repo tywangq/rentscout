@@ -83,6 +83,7 @@ def _run_live(args: argparse.Namespace) -> None:
             month=run_date[:7],
             monthly_cap=caps.rentcast_requests_per_month,
             min_beds=profile.min_beds,
+            max_beds=profile.max_beds,
             max_price=profile.max_price,
         )
         ors_key = os.environ.get("ORS_API_KEY")

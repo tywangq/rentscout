@@ -48,3 +48,27 @@ def test_empty_neighborhood_list_means_anywhere(profile_caps):
     open_profile = dataclasses.replace(profile, neighborhoods=())
     passed, _ = hard_filter(open_profile, [variant(neighborhood="Georgetown")])
     assert len(passed) == 1
+
+
+def test_shared_house_rooms_and_tiny_units_are_hard_filtered():
+    import dataclasses
+
+    from rentscout.filters import hard_filter
+    from rentscout.models import Listing
+    from rentscout.profile import load_profile
+    from conftest import PROFILE
+
+    profile, _ = load_profile(PROFILE)
+    profile = dataclasses.replace(profile, max_beds=2, min_sqft=450, neighborhoods=())
+
+    def mk(sid, beds, sqft):
+        return Listing(id=f"t:{sid}", source="t", url="", address=f"{sid} St",
+                       neighborhood="", price=900, beds=beds, baths=1, sqft=sqft,
+                       description="", available="")
+
+    passed, filtered = hard_filter(profile, [
+        mk("room", 8, 170), mk("tiny", 1, 300), mk("ok", 1, 500), mk("nosize", 2, None),
+    ])
+    assert [l.id for l in passed] == ["t:ok", "t:nosize"]  # unknown size is not excluded
+    reasons = dict((l.id, r) for l, r in filtered)
+    assert "shared house" in reasons["t:room"] and "too small" in reasons["t:tiny"]

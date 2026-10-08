@@ -17,6 +17,10 @@ class SearchProfile:
     preferences: tuple[str, ...]  # soft, scored by the LLM
     commute_anchor: str
     max_commute_minutes: int
+    # Hard limits, enforced in code. The first cold start ranked 170 sq ft rooms
+    # in 8-bedroom shared houses at 10/10: cheap enough to win every soft point.
+    min_sqft: int | None = None  # listings with unknown size pass; known-small ones do not
+    max_beds: float | None = None
     # OpenRouteService profile; it has no transit, so the live default is cycling.
     commute_mode: str = "cycling-regular"
 
@@ -50,6 +54,8 @@ def load_profile(path: str | Path) -> tuple[SearchProfile, BudgetCaps]:
         commute_anchor=s["commute_anchor"],
         max_commute_minutes=int(s["max_commute_minutes"]),
         commute_mode=s.get("commute_mode", "cycling-regular"),
+        min_sqft=int(s["min_sqft"]) if "min_sqft" in s else None,
+        max_beds=float(s["max_beds"]) if "max_beds" in s else None,
     )
     caps = BudgetCaps(
         per_run_dollars=float(b["per_run_dollars"]),

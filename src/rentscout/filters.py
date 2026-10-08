@@ -29,6 +29,11 @@ def _violation(profile: SearchProfile, listing: Listing) -> str | None:
         return f"over budget (${listing.price} > ${profile.max_price})"
     if listing.beds < profile.min_beds:
         return f"too few beds ({listing.beds} < {profile.min_beds})"
+    if profile.max_beds is not None and listing.beds > profile.max_beds:
+        return f"too many beds ({listing.beds:g} > {profile.max_beds:g}; likely a shared house)"
+    if (profile.min_sqft is not None and listing.sqft is not None
+            and listing.sqft < profile.min_sqft):
+        return f"too small ({listing.sqft} < {profile.min_sqft} sq ft)"
     if listing.baths < profile.min_baths:
         return f"too few baths ({listing.baths} < {profile.min_baths})"
     if profile.neighborhoods and not (set(profile.neighborhoods) & listing.area_names()):

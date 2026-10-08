@@ -56,6 +56,7 @@ class RentCastSource:
         city: str = "Seattle",
         state: str = "WA",
         min_beds: float = 0,
+        max_beds: float | None = None,
         max_price: int | None = None,
         attempts: int = 3,
         timeout: float = 20.0,
@@ -73,8 +74,9 @@ class RentCastSource:
             "limit": str(PAGE_LIMIT),
             "includeTotalCount": "true",
         }
-        if min_beds:
-            self._params["bedrooms"] = f"{int(min_beds)}:"
+        if min_beds or max_beds is not None:
+            upper = "" if max_beds is None else str(int(max_beds))
+            self._params["bedrooms"] = f"{int(min_beds)}:{upper}"
         if max_price:
             self._params["price"] = f":{max_price}"
         self._attempts = attempts

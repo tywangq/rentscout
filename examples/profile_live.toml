@@ -8,6 +8,8 @@ city = "Seattle, WA"
 max_price = 2200
 min_beds = 1
 min_baths = 1
+max_beds = 2      # more is almost always a room in a shared house
+min_sqft = 450    # hard; "at least 600" below stays a soft preference
 neighborhoods = ["Capitol Hill", "Fremont", "Wallingford", "Ballard", "University District", "Queen Anne", "South Lake Union"]
 excluded_keywords = []
 preferences = [
@@ -24,4 +26,7 @@ per_run_dollars = 0.05
 investigations_per_run = 10
 monthly_dollars = 2.0
 min_score_to_investigate = 6
-rentcast_requests_per_month = 40
+# 30, not 40, for 2026-10 only: the counter lives in each state database, and
+# this month's local tests and the v1/v2 Actions databases already used about 8
+# of the account's 50 free requests. Raise back to 40 in November.
+rentcast_requests_per_month = 30

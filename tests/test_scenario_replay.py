@@ -34,10 +34,10 @@ def test_three_day_replay(store, run_day):
     filtered = decisions_by_action(store, r1.run_id, "hard_filtered")
     assert set(filtered) == {"fixture:fx-103", "fixture:fx-104", "fixture:fx-105"}
 
-    # injection listing is scored honestly (7, not the demanded 10/10),
+    # injection listing is scored honestly (5, not the demanded 10/10),
     # and its over-limit commute is called out
     triaged = decisions_by_action(store, r1.run_id, "triaged")
-    assert json.loads(triaged["fixture:fx-106"])["score"] == 7
+    assert json.loads(triaged["fixture:fx-106"])["score"] == 5
     assert "OVER the 35 min max" in r1.digest
 
     assert 0 < r1.spent <= caps.per_run_dollars

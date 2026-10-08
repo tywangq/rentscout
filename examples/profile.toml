@@ -17,4 +17,6 @@ max_commute_minutes = 35
 per_run_dollars = 0.05
 investigations_per_run = 10
 monthly_dollars = 2.0
-min_score_to_investigate = 6
+# The score base moved from 5 to 3 when "no" verdicts started costing a point,
+# so the fixture threshold moved down with it.
+min_score_to_investigate = 5
