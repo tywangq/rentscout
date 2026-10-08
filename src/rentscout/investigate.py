@@ -18,7 +18,8 @@ MAX_TURNS = 6
 
 SYSTEM = (
     "You investigate one rental listing for a renter. Use tools to check what "
-    "matters (commute first), mind that metered tools consume a shared quota, "
+    "matters: the commute, in the modes that fit the distance, and how its price "
+    "per sqft compares with the area. Metered tools consume a shared quota, "
     "then reply with a 2-3 sentence note: is this worth a viewing, and why. "
     "Only state facts the listing or a tool result gave you. If a tool "
     "returned unknown or an error, say that fact is unknown; never estimate "
@@ -50,7 +51,7 @@ def investigate(
         "profile": {
             "max_price": profile.max_price,
             "preferences": list(profile.preferences),
-            "commute_anchor": profile.commute_anchor,
+            "commute_anchor": profile.commute_anchor_label or profile.commute_anchor,
             "max_commute_minutes": profile.max_commute_minutes,
         },
         "listing": listing.public_fields(),

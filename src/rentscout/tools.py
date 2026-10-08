@@ -7,6 +7,8 @@ Every tool declares a cost class so budget enforcement is uniform:
 
 from __future__ import annotations
 
+import json
+import statistics
 from dataclasses import dataclass
 from typing import Callable
 
@@ -63,11 +65,32 @@ def build_registry(
     """commute_time reads a fixture table offline, or calls live routing
     (ORSCommute) when given a callable; the loop is the same either way."""
 
-    def commute_time(address: str) -> str:
+    def commute_time(address: str, mode: str | None = None) -> str:
         if callable(commutes):  # live routing (ORSCommute)
-            return commutes(address)
-        minutes = commutes.get(address)
+            return commutes(address, mode)
+        minutes = commutes.get(address)  # fixture table has one mode
         return str(minutes) if minutes is not None else "unknown"
+
+    def compare_to_area(listing_id: str) -> str:
+        row = store.listing(listing_id)
+        if row is None:
+            return f"unknown listing {listing_id!r}"
+        attrs = json.loads(row["attributes"] or "{}")
+        zip_code = attrs.get("zip")
+        if not zip_code:
+            return "no zip code for this listing; no area to compare against"
+        peers = store.area_price_per_sqft(zip_code, listing_id)
+        if len(peers) < 3:
+            return f"only {len(peers)} other tracked listings in {zip_code}; too few to compare"
+        median = statistics.median(peers)
+        head = (f"{len(peers)} other tracked listings in {zip_code} (all within this "
+                f"profile's price and bedroom limits): median ${median:.2f}/sqft")
+        own = attrs.get("price_per_sqft")
+        if not own:
+            return head + "; this listing has no square footage, so it cannot be compared"
+        diff = (own - median) / median * 100
+        side = "below" if diff < 0 else "above"
+        return head + f"; this listing ${own:.2f}/sqft, {abs(diff):.0f}% {side} the median"
 
     def price_history(listing_id: str) -> str:
         history = store.price_history(listing_id)
@@ -79,14 +102,36 @@ def build_registry(
         [
             Tool(
                 name="commute_time",
-                description="Minutes from this address to the profile's commute anchor.",
+                description=(
+                    "Minutes from this address to the renter's commute anchor. mode: "
+                    "bike (default), car (free-flow, no traffic), or walk. There is no "
+                    "transit. Each call, each mode, uses quota: pick the modes that fit "
+                    "the distance."
+                ),
                 parameters={
                     "type": "object",
-                    "properties": {"address": {"type": "string"}},
+                    "properties": {
+                        "address": {"type": "string"},
+                        "mode": {"type": "string", "enum": ["bike", "car", "walk"]},
+                    },
                     "required": ["address"],
                 },
                 cost_class="metered",
                 fn=commute_time,
+            ),
+            Tool(
+                name="compare_to_area",
+                description=(
+                    "This listing's price per sqft against the median of other tracked "
+                    "listings in the same zip code. Computed from data already fetched."
+                ),
+                parameters={
+                    "type": "object",
+                    "properties": {"listing_id": {"type": "string"}},
+                    "required": ["listing_id"],
+                },
+                cost_class="free",
+                fn=compare_to_area,
             ),
             Tool(
                 name="price_history",

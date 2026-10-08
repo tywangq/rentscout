@@ -78,8 +78,11 @@ def check_note(
             m = re.match(r"\s*(\d+)", result)
             if m:
                 commute_evidence.add(int(m.group(1)))
-        if entry.get("name") == "price_history":
-            price_evidence |= {_num(x) for x in re.findall(r"\$(\d[\d,]*)", result)}
+        # Any dollar figure a tool returned is evidence (price history, and the
+        # area median from compare_to_area, which the checker first missed).
+        price_evidence |= {
+            round(_num(x), 2) for x in re.findall(r"\$(\d[\d,]*(?:\.\d+)?)", result)
+        }
     ppsf = (listing.get("details") or {}).get("price_per_sqft")
     if ppsf is not None:
         price_evidence.add(round(float(ppsf), 2))

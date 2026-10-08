@@ -27,9 +27,11 @@ GEOCODE = "https://api.heigit.org/pelias/v1/search"
 RETRYABLE = {429, 500, 502, 503, 504}
 MODE_WORDS = {
     "cycling-regular": "by bike",
-    "driving-car": "by car",
+    "driving-car": "by car (free-flow, no traffic)",
     "foot-walking": "on foot",
 }
+# What the model sees in the tool schema, mapped to ORS profiles.
+MODES = {"bike": "cycling-regular", "car": "driving-car", "walk": "foot-walking"}
 
 
 class ORSCommute:
@@ -56,11 +58,15 @@ class ORSCommute:
         self._open = opener
         self._sleep = sleep
 
-    def __call__(self, address: str) -> str:
-        """Tool body: minutes from address to the anchor, or an explanation."""
-        cached = self._store.cached_commute(address, self._anchor, self._mode)
+    def __call__(self, address: str, mode: str | None = None) -> str:
+        """Tool body: minutes from address to the anchor, or an explanation.
+        mode is the tool-facing name (bike / car / walk); None means the profile's."""
+        if mode is not None and mode not in MODES:
+            return f"unknown (unsupported mode {mode!r}; use bike, car or walk)"
+        profile_mode = MODES[mode] if mode else self._mode
+        cached = self._store.cached_commute(address, self._anchor, profile_mode)
         if cached is not None:
-            return self._format(cached)
+            return self._format(cached, profile_mode)
         try:
             origin = self._listing_coords(address) or self._geocode(address)
             if origin is None:
@@ -68,14 +74,15 @@ class ORSCommute:
             destination = self._geocode(self._anchor)
             if destination is None:
                 return "unknown (commute anchor could not be located)"
-            minutes = self._route_minutes(origin, destination)
+            minutes = self._route_minutes(origin, destination, profile_mode)
         except RoutingError as exc:
             return f"unknown ({exc})"
-        self._store.cache_commute(address, self._anchor, self._mode, minutes)
-        return self._format(minutes)
+        self._store.cache_commute(address, self._anchor, profile_mode, minutes)
+        return self._format(minutes, profile_mode)
 
-    def _format(self, minutes: int) -> str:
-        return f"{minutes} min {MODE_WORDS[self._mode]}"
+    @staticmethod
+    def _format(minutes: int, profile_mode: str) -> str:
+        return f"{minutes} min {MODE_WORDS[profile_mode]}"
 
     def _listing_coords(self, address: str) -> tuple[float, float] | None:
         attrs = self._store.listing_attributes_by_address(address)
@@ -99,13 +106,13 @@ class ORSCommute:
         return lat, lon
 
     def _route_minutes(
-        self, origin: tuple[float, float], destination: tuple[float, float]
+        self, origin: tuple[float, float], destination: tuple[float, float], profile_mode: str
     ) -> int:
         body = json.dumps(
             {"coordinates": [[origin[1], origin[0]], [destination[1], destination[0]]]}
         ).encode()
         request = urllib.request.Request(
-            f"{DIRECTIONS}/{self._mode}",
+            f"{DIRECTIONS}/{profile_mode}",
             data=body,
             headers={"Authorization": self._key, "Content-Type": "application/json"},
             method="POST",

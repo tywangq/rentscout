@@ -240,6 +240,18 @@ class Store:
         ).fetchone()
         return json.loads(row["attributes"] or "{}") if row else None
 
+    def area_price_per_sqft(self, zip_code: str, exclude_id: str) -> list[float]:
+        """$/sqft of the other active listings in a zip, from the tracked feed."""
+        values = []
+        for row in self._conn.execute(
+            "SELECT id, attributes FROM listings WHERE status = 'active' AND id != ?",
+            (exclude_id,),
+        ):
+            attrs = json.loads(row["attributes"] or "{}")
+            if attrs.get("zip") == zip_code and attrs.get("price_per_sqft"):
+                values.append(float(attrs["price_per_sqft"]))
+        return values
+
     # -- routing caches -----------------------------------------------------
 
     def cached_commute(self, origin: str, destination: str, mode: str) -> int | None:

@@ -18,7 +18,10 @@ preferences = [
   "apartment or condo rather than a single-family house",
   "fresh listing: under a week on the market",
 ]
-commute_anchor = "2101 4th Ave, Seattle, WA"
+# Amazon Spheres: a few blocks from the old anchor (2101 4th Ave), so commutes
+# barely move, but a reader recognises it. The label is shown; the address routes.
+commute_anchor = "2111 7th Ave, Seattle, WA 98121"
+commute_anchor_label = "Amazon Spheres"
 max_commute_minutes = 35
 
 [budget]

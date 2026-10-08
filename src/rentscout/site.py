@@ -178,7 +178,9 @@ def _funnel(conn: sqlite3.Connection, run_id: str, min_score: int) -> list[tuple
     ]
 
 
-def _map_points(picks: list[dict], conn: sqlite3.Connection, anchor: str) -> dict | None:
+def _map_points(
+    picks: list[dict], conn: sqlite3.Connection, anchor: str, label: str = ""
+) -> dict | None:
     points = []
     for i, p in enumerate(picks, 1):
         attrs = json.loads(p["listing"]["attributes"] or "{}")
@@ -190,7 +192,7 @@ def _map_points(picks: list[dict], conn: sqlite3.Connection, anchor: str) -> dic
         return None
     row = conn.execute("SELECT lat, lon FROM geocode_cache WHERE address = ?", (anchor,)).fetchone()
     return {"points": points,
-            "anchor": {"lat": row["lat"], "lon": row["lon"], "label": anchor} if row else None}
+            "anchor": {"lat": row["lat"], "lon": row["lon"], "label": label or anchor} if row else None}
 
 
 def _map_html(data: dict | None) -> str:
@@ -199,7 +201,7 @@ def _map_html(data: dict | None) -> str:
     # json.dumps output, with "<" escaped so listing text cannot close the script tag.
     payload = json.dumps(data).replace("<", "\\u003c")
     return f"""<div id="map" role="img" aria-label="Map of today's picks"></div>
-<p class="muted">Numbers match the picks below; the dark marker is the commute anchor.
+<p class="muted">Numbers match the picks below; the star is where the renter commutes to.
 Tiles &copy; OpenStreetMap contributors.</p>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
@@ -251,7 +253,7 @@ def render_site(
     month = (run["run_date"] if run else date.today().isoformat())[:7]
     picks = _picks(conn, run["run_id"], caps.min_score_to_investigate) if run else []
     funnel = _funnel(conn, run["run_id"], caps.min_score_to_investigate) if run else []
-    map_data = _map_points(picks, conn, profile.commute_anchor)
+    map_data = _map_points(picks, conn, profile.commute_anchor, profile.commute_anchor_label)
     spend, calls = _month_spend(conn, month), _api_calls(conn, month)
     conn.close()
     rows, _ = build_report(db_path, profile)
@@ -337,7 +339,8 @@ enforced in code. <a href="{REPO}">Source</a>.</p>
 {_map_html(map_data) or "<p class='muted'>No coordinates for today's picks.</p>"}
 <h2>Today's picks</h2>
 <p class="muted">Profile: {escape(profile.name)}, up to ${profile.max_price:,}, commute to
-{escape(profile.commute_anchor)} measured by bike (routing has no transit).
+{escape(profile.commute_anchor_label or profile.commute_anchor)}, by bike, car or on foot as the
+agent chooses (the routing service has no transit; car times assume no traffic).
 The model answers yes / no / unknown per preference; the score is computed in code.</p>
 {picks_html}
 <h2>Run history</h2>

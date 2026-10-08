@@ -101,7 +101,7 @@ def test_a_crashing_tool_becomes_an_error_message(store):
     from rentscout.profile import BudgetCaps
     from rentscout.tools import build_registry
 
-    def boom(address):
+    def boom(address, mode=None):
         raise RuntimeError("upstream exploded")
 
     guard = BudgetGuard(BudgetCaps(0.05, 10, 2.0), 0.0)
@@ -109,3 +109,20 @@ def test_a_crashing_tool_becomes_an_error_message(store):
         ToolCall("commute_time", {"address": HOME}), guard
     )
     assert result.startswith("ERROR: commute_time failed (RuntimeError)")
+
+
+
+def test_mode_is_chosen_per_call_and_cached_separately(store):
+    opener = Opener(GEO, ROUTE, {"routes": [{"summary": {"duration": 600.0}}]})
+    c = _commute(store, opener)
+    assert c(HOME) == "19 min by bike"
+    assert c(HOME, "car") == "10 min by car (free-flow, no traffic)"
+    assert "directions/driving-car" in opener.urls[-1]
+    assert c(HOME, "car").startswith("10 min")  # cached: no further request
+    assert len(opener.urls) == 3
+
+
+def test_unsupported_mode_is_reported_not_routed(store):
+    opener = Opener()
+    assert _commute(store, opener)(HOME, "transit").startswith("unknown (unsupported mode")
+    assert opener.urls == []

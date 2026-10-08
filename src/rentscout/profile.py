@@ -23,6 +23,7 @@ class SearchProfile:
     max_beds: float | None = None
     # OpenRouteService profile; it has no transit, so the live default is cycling.
     commute_mode: str = "cycling-regular"
+    commute_anchor_label: str = ""  # what readers recognise; the address is for routing
 
 
 @dataclass(frozen=True)
@@ -54,6 +55,7 @@ def load_profile(path: str | Path) -> tuple[SearchProfile, BudgetCaps]:
         commute_anchor=s["commute_anchor"],
         max_commute_minutes=int(s["max_commute_minutes"]),
         commute_mode=s.get("commute_mode", "cycling-regular"),
+        commute_anchor_label=s.get("commute_anchor_label", ""),
         min_sqft=int(s["min_sqft"]) if "min_sqft" in s else None,
         max_beds=float(s["max_beds"]) if "max_beds" in s else None,
     )

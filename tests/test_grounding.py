@@ -52,3 +52,9 @@ def test_hedged_area_knowledge_is_flagged_soft():
     # Verbatim pattern from the first live run, when routing was down.
     hard, soft = check("Capitol Hill is generally within the 35-minute range.", log=[])
     assert hard == [] and soft == ["speculation: 'generally'"]
+
+
+def test_dollar_figures_from_any_tool_count_as_evidence():
+    log = COMMUTE_15 + [{"name": "compare_to_area",
+                         "result": "15 other tracked listings in 98107: median $2.62/sqft"}]
+    assert check("At $2.82 per sqft it is above the area median of $2.62.", log=log) == ([], [])
