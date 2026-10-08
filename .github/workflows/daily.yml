@@ -15,6 +15,11 @@ on:
   schedule:
     - cron: "0 15 * * *" # 08:00 Pacific (PDT)
   workflow_dispatch:
+    inputs:
+      publish_only:
+        description: "Rebuild and publish the page from saved state, without a live run"
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -45,6 +50,9 @@ jobs:
 
       - name: Live run
         id: live
+        # publish_only re-renders the page after a page change without spending a
+        # RentCast request or replacing the day's run with a near-empty one.
+        if: ${{ !inputs.publish_only }}
         continue-on-error: true
         env:
           RENTCAST_API_KEY: ${{ secrets.RENTCAST_API_KEY }}
@@ -57,7 +65,7 @@ jobs:
             --state state/rentscout.db --out state/digests
 
       - name: Save state
-        if: always()
+        if: ${{ always() && !inputs.publish_only }}
         uses: actions/cache/save@v4
         with:
           path: state
