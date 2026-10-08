@@ -36,7 +36,8 @@ SYSTEM = (
     "For every listing and every preference answer yes, no, or unknown, using "
     "only what the listing states; unknown when it does not say. Some listings "
     "have no description; judge those from their structured details (size, "
-    "price per sqft, property type, days on market). Give a one-sentence reason."
+    "price per sqft, property type, days on market). Give a reason of at most "
+    "12 words."
 )
 
 
@@ -92,20 +93,40 @@ def reply_schema(profile: SearchProfile) -> dict:
     }
 
 
+CHUNK = 25
+
+
 def triage(
     llm: LLMClient,
     guard: BudgetGuard,
     profile: SearchProfile,
     listings: list[Listing],
+    *,
+    spend_limit: float | None = None,
+    chunk_size: int = CHUNK,
 ) -> list[TriageScore]:
-    judged = _ask(llm, guard, profile, listings)
-    missing = [l for l in listings if l.id not in judged]
-    if missing and len(listings) > 1:
-        for listing in missing:
-            try:
-                judged.update(_ask(llm, guard, profile, [listing]))
-            except BudgetExceeded:
-                break  # keep what was judged; the rest fall back below
+    """Judge listings in chunks; stop starting chunks once spend_limit is hit,
+    so triage cannot eat the budget the investigation step needs."""
+    guard.require_llm_budget()  # an exhausted hard cap is a halt, not a quiet skip
+    judged: dict[str, tuple[dict[str, str], str]] = {}
+    attempted: list[Listing] = []
+    for start in range(0, len(listings), chunk_size):
+        if spend_limit is not None and guard.spent >= spend_limit:
+            break
+        chunk = listings[start:start + chunk_size]
+        attempted.extend(chunk)
+        try:
+            judged.update(_ask(llm, guard, profile, chunk))
+        except BudgetExceeded:
+            break
+        missing = [l for l in chunk if l.id not in judged]
+        if missing and len(chunk) > 1:
+            for listing in missing:
+                try:
+                    judged.update(_ask(llm, guard, profile, [listing]))
+                except BudgetExceeded:
+                    break  # keep what was judged; the rest fall back below
+    attempted_ids = {l.id for l in attempted}
     scores = []
     for listing in listings:
         if listing.id in judged:
@@ -114,9 +135,13 @@ def triage(
                 listing.id, compute_score(profile, listing, verdicts), reason,
                 tuple(sorted(verdicts.items())),
             ))
-        else:
+        elif listing.id in attempted_ids:
             scores.append(TriageScore(
                 listing.id, FALLBACK_SCORE, "triage reply unusable; defaulted"
+            ))
+        else:
+            scores.append(TriageScore(
+                listing.id, FALLBACK_SCORE, "not triaged (budget kept for investigation)"
             ))
     return scores
 

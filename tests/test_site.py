@@ -37,3 +37,11 @@ def test_page_shows_at_most_max_picks(store, run_day, tmp_path):
     profile, caps = load_profile(PROFILE)
     html = render_site(str(tmp_path / "state.db"), profile, caps, str(tmp_path))
     assert 0 < html.count("class='pick'") <= MAX_PICKS
+
+
+def test_uninvestigated_picks_are_shown_and_labelled(store, run_day, tmp_path):
+    run_day(1, investigations_per_run=1)
+    profile, caps = load_profile(PROFILE)
+    html = render_site(str(tmp_path / "state.db"), profile, caps, str(tmp_path))
+    assert html.count("class='pick'") >= 2
+    assert "Not investigated this run" in html

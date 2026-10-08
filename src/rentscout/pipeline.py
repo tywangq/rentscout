@@ -93,6 +93,11 @@ def _run(
     for listing in suppressed:
         store.record_decision(run_id, listing.id, "suppressed_rejected")
     candidates = [l for l in passed if l.id not in rejected]
+    # Freshest first, then cheapest; past the cap they are recorded, not scored.
+    candidates.sort(key=lambda l: (l.attrs.get("days_on_market") or 0, l.price))
+    for listing in candidates[caps.max_triage_per_run:]:
+        store.record_decision(run_id, listing.id, "skipped_triage_cap")
+    candidates = candidates[:caps.max_triage_per_run]
 
     halted = False
     scores: dict[str, TriageScore] = {}
@@ -100,7 +105,10 @@ def _run(
         try:
             scores = {
                 ts.listing_id: ts
-                for ts in triage(llm, guard, profile, candidates)
+                for ts in triage(
+                    llm, guard, profile, candidates,
+                    spend_limit=caps.per_run_dollars * caps.triage_budget_share,
+                )
             }
             for ts in scores.values():
                 store.record_decision(

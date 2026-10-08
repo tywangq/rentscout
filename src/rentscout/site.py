@@ -30,7 +30,9 @@ def _latest_ok_run(conn: sqlite3.Connection) -> sqlite3.Row | None:
     ).fetchone()
 
 
-def _picks(conn: sqlite3.Connection, run_id: str) -> list[dict]:
+def _picks(conn: sqlite3.Connection, run_id: str, min_score: int) -> list[dict]:
+    """Every listing scoring at or above the threshold, investigated or not:
+    a pick the budget left uninvestigated is still a pick, labelled as such."""
     triaged, investigated = {}, {}
     for row in conn.execute(
         "SELECT listing_id, action, detail FROM decisions WHERE run_id = ?", (run_id,)
@@ -40,12 +42,14 @@ def _picks(conn: sqlite3.Connection, run_id: str) -> list[dict]:
         elif row["action"] == "investigated":
             investigated[row["listing_id"]] = json.loads(row["detail"])
     picks = []
-    for lid, inv in investigated.items():
+    for lid, tri in triaged.items():
+        if tri.get("score", 0) < min_score:
+            continue
         listing = conn.execute("SELECT * FROM listings WHERE id = ?", (lid,)).fetchone()
         if listing is None:
             continue
-        tri = triaged.get(lid, {})
-        picks.append({"listing": listing, "triage": tri, "investigation": inv})
+        picks.append({"listing": listing, "triage": tri,
+                      "investigation": investigated.get(lid)})
     picks.sort(key=lambda p: (-p["triage"].get("score", 0), p["listing"]["price"]))
     return picks[:MAX_PICKS]
 
@@ -97,6 +101,10 @@ def _eval_summary(eval_dir: Path) -> str:
 
 def _pick_html(p: dict) -> str:
     l, tri, inv = p["listing"], p["triage"], p["investigation"]
+    if inv is None:
+        inv = {"note": "Not investigated this run: the budget or tool quota ran out "
+                       "first. Score and verdicts are from triage only.",
+               "tool_log": []}
     attrs = json.loads(l["attributes"] or "{}") if "attributes" in l.keys() else {}
     facts = [f"${l['price']:,}/mo", f"{l['beds']:g} bd / {l['baths']:g} ba"]
     if l["sqft"]:
@@ -134,7 +142,7 @@ def render_site(
     conn.row_factory = sqlite3.Row
     run = _latest_ok_run(conn)
     month = (run["run_date"] if run else date.today().isoformat())[:7]
-    picks = _picks(conn, run["run_id"]) if run else []
+    picks = _picks(conn, run["run_id"], caps.min_score_to_investigate) if run else []
     spend, calls = _month_spend(conn, month), _api_calls(conn, month)
     conn.close()
     rows, _ = build_report(db_path, profile)

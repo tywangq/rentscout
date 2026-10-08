@@ -58,3 +58,10 @@ def test_monthly_cap_refuses_pipeline_run(store, run_day):
         run_day(1)
     statuses = [row["status"] for row in store.all_runs()]
     assert any(s.startswith("refused:") for s in statuses)
+
+
+def test_cold_start_triages_only_the_capped_freshest(store, run_day):
+    result = run_day(1, max_triage_per_run=2)
+    actions = [row["action"] for row in store.decisions(result.run_id)]
+    assert actions.count("triaged") == 2
+    assert actions.count("skipped_triage_cap") >= 1

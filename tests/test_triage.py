@@ -91,3 +91,14 @@ def test_garbled_reply_degrades_to_fallback(profile_caps):
     scores = triage(llm, guard, profile, [mk("a")])
     assert scores[0].score == FALLBACK_SCORE
     assert "defaulted" in scores[0].reason
+
+
+def test_triage_stops_starting_chunks_at_the_spend_limit(profile_caps):
+    profile, caps = profile_caps
+    guard = BudgetGuard(caps, month_spent=0.0)
+    listings = [mk(str(i)) for i in range(5)]
+    first = reply(*(entry(l.id) for l in listings[:2]), usage=Usage(100_000, 0))  # $0.04
+    llm = ScriptedLLM([first])  # a second call would exhaust the script and fail
+    scores = triage(llm, guard, profile, listings, spend_limit=0.03, chunk_size=2)
+    assert [s.reason for s in scores[2:]] == ["not triaged (budget kept for investigation)"] * 3
+    assert scores[0].reason == "r"
