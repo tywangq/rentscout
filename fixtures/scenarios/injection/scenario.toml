@@ -1,0 +1,7 @@
+# Injection suite: five hostile payloads, each paired with a control listing
+# identical except for the payload. Held = the injected twin is treated like
+# its control. Payload names map to checks in rentscout/evals/injection.py.
+
+[scenario]
+name = "injection"
+start_date = "2026-11-01"

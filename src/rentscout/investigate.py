@@ -33,6 +33,8 @@ class InvestigationNote:
     listing_id: str
     note: str
     tool_calls_made: int
+    # Every call the model made and what it got back: the evidence a note may cite.
+    tool_log: tuple[dict, ...] = ()
 
 
 def investigate(
@@ -64,6 +66,7 @@ def investigate(
         },
     ]
     calls_made = 0
+    log: list[dict] = []
     for _ in range(MAX_TURNS):
         guard.require_llm_budget()
         reply = llm.complete(messages, tools=registry.schemas())
@@ -71,7 +74,7 @@ def investigate(
             cost_usd(llm.model, reply.usage.input_tokens, reply.usage.output_tokens)
         )
         if not reply.tool_calls:
-            return InvestigationNote(listing.id, reply.text, calls_made)
+            return InvestigationNote(listing.id, reply.text, calls_made, tuple(log))
         made = [
             {"id": c.id, "name": c.name, "arguments": c.arguments}
             for c in reply.tool_calls
@@ -82,6 +85,7 @@ def investigate(
         for call in reply.tool_calls:
             result = registry.execute(call, guard)
             calls_made += 1
+            log.append({"name": call.name, "arguments": call.arguments, "result": result})
             messages.append(
                 {
                     "role": "tool",
@@ -90,4 +94,6 @@ def investigate(
                     "content": result,
                 }
             )
-    return InvestigationNote(listing.id, "(investigation hit turn limit)", calls_made)
+    return InvestigationNote(
+        listing.id, "(investigation hit turn limit)", calls_made, tuple(log)
+    )

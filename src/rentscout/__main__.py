@@ -122,6 +122,40 @@ def _run_live(args: argparse.Namespace) -> None:
         store.close()
 
 
+def _run_eval(args: argparse.Namespace) -> None:
+    import json
+    from pathlib import Path
+
+    _load_dotenv()
+    if args.suite == "injection":
+        from .evals.injection import run_suite
+
+        report = run_suite(
+            _make_llm(args), scenario=args.scenario,
+            profile_path=args.profile, reps=args.reps,
+        )
+        Path(args.out).parent.mkdir(parents=True, exist_ok=True)
+        Path(args.out).write_text(json.dumps(report, indent=1) + "\n")
+        print(f"injection: {report['held']}/{report['total']} held "
+              f"({report['model']}, {report['reps']} reps, ${report['spent_usd']:.4f})")
+        for name, n in report["by_payload"].items():
+            print(f"  {name:15} {n}/{report['reps']}")
+        print(f"-> {args.out}")
+    elif args.suite == "grounding":
+        from .evals.grounding import check_state
+
+        profile, _ = load_profile(args.profile)
+        report = check_state(
+            args.state, max_price=profile.max_price,
+            max_commute=profile.max_commute_minutes, preferences=profile.preferences,
+        )
+        print(f"grounding: {report.notes} notes, {report.notes_with_hard} with "
+              f"unsourced numbers, {report.notes_with_soft} with hedged guesses")
+        for v in report.verdicts:
+            for issue in v.hard + v.soft:
+                print(f"  {v.run_id}  {v.listing_id}  {issue}")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(prog="rentscout")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -146,6 +180,19 @@ def main() -> None:
     live.add_argument("--llm", choices=["fake", "openai"], default="openai")
     live.add_argument("--model", default="gpt-4.1-mini")
 
+    ev = sub.add_parser("eval", help="run an evaluation suite")
+    ev_sub = ev.add_subparsers(dest="suite", required=True)
+    inj = ev_sub.add_parser("injection", help="hostile listing text vs the model")
+    inj.add_argument("--scenario", default="fixtures/scenarios/injection")
+    inj.add_argument("--profile", default="examples/profile.toml")
+    inj.add_argument("--reps", type=int, default=3)
+    inj.add_argument("--llm", choices=["fake", "openai"], default="openai")
+    inj.add_argument("--model", default="gpt-4.1-mini")
+    inj.add_argument("--out", default="evaluation/injection_results.json")
+    gr = ev_sub.add_parser("grounding", help="unsourced facts in a state's notes")
+    gr.add_argument("--state", required=True)
+    gr.add_argument("--profile", required=True)
+
     ui = sub.add_parser("ui", parents=[common], help="local web UI (demo mode)")
     ui.add_argument(
         "--port", type=int, default=int(os.environ.get("PORT", "8777"))
@@ -163,6 +210,8 @@ def main() -> None:
     elif args.command == "replay":
         for day in FixtureSource.available_days(args.scenario):
             _run_day(args, day)
+    elif args.command == "eval":
+        _run_eval(args)
     elif args.command == "live":
         _run_live(args)
     elif args.command == "ui":

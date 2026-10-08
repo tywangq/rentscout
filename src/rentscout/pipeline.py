@@ -141,7 +141,12 @@ def _run(
             notes[listing.id] = note.note
             store.record_decision(
                 run_id, listing.id, "investigated",
-                {"note": note.note, "tool_calls": note.tool_calls_made},
+                {
+                    "note": note.note,
+                    "tool_calls": note.tool_calls_made,
+                    "tool_log": list(note.tool_log),
+                    "listing": listing.public_fields(),
+                },
             )
         except BudgetExceeded as exc:
             halted = True
