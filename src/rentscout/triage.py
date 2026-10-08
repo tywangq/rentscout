@@ -67,7 +67,7 @@ def triage(
 
 def _parse(text: str, listings: list[Listing]) -> list[TriageScore]:
     try:
-        raw = json.loads(text)
+        raw = json.loads(_strip_fence(text))
         by_id = {
             entry["id"]: TriageScore(
                 listing_id=entry["id"],
@@ -85,3 +85,12 @@ def _parse(text: str, listings: list[Listing]) -> list[TriageScore]:
         )
         for listing in listings
     ]
+
+
+def _strip_fence(text: str) -> str:
+    """Real models often wrap JSON in a ```json fence despite being told not to."""
+    text = text.strip()
+    if text.startswith("```"):
+        text = text.split("\n", 1)[1] if "\n" in text else ""
+        text = text.rsplit("```", 1)[0]
+    return text

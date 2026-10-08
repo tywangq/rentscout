@@ -1,6 +1,7 @@
 """CLI: replay fixture scenarios and record feedback.
 
-M0 runs entirely offline (RuleBasedLLM); the real model client arrives in M1.
+Runs offline against RuleBasedLLM by default; --llm openai uses the real model
+(needs OPENAI_API_KEY and the optional dependency: uv sync --extra openai).
 """
 
 from __future__ import annotations
@@ -9,12 +10,18 @@ import argparse
 import os
 from datetime import date, timedelta
 
-from .llm import RuleBasedLLM
+from .llm import LLMClient, OpenAIClient, RuleBasedLLM
 from .pipeline import daily_run
 from .profile import load_profile
 from .sources.fixture import FixtureSource
 from .state import Store
 from .tools import build_registry
+
+
+def _make_llm(args: argparse.Namespace) -> LLMClient:
+    if args.llm == "openai":
+        return OpenAIClient(model=args.model)
+    return RuleBasedLLM()
 
 
 def _run_day(args: argparse.Namespace, day: int) -> None:
@@ -31,7 +38,7 @@ def _run_day(args: argparse.Namespace, day: int) -> None:
             store=store,
             profile=profile,
             caps=caps,
-            llm=RuleBasedLLM(),
+            llm=_make_llm(args),
             registry=registry,
             run_date=run_date,
             out_dir=args.out,
@@ -55,6 +62,8 @@ def main() -> None:
     common.add_argument("--profile", required=True)
     common.add_argument("--state", required=True)
     common.add_argument("--out", default="runs")
+    common.add_argument("--llm", choices=["fake", "openai"], default="fake")
+    common.add_argument("--model", default="gpt-4.1-mini")
 
     run = sub.add_parser("run", parents=[common], help="run one simulated day")
     run.add_argument("--day", type=int, required=True)

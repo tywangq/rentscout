@@ -11,10 +11,12 @@ a fixed-pipeline lease scanner: same domain, opposite control-flow philosophy.
 Together they argue one point — knowing when a problem needs a workflow and
 when it needs a (bounded) agent.
 
-**Status: M0** — agent skeleton, fixture data source, budget enforcement, and
-scenario-replay tests. No live LLM calls yet; the full pipeline runs offline
-against a deterministic rule-based model stand-in. See [SPEC.md](SPEC.md) for
-the design and milestones.
+**Status: M0 + live model.** Agent loop, fixture data source, budget
+enforcement, and scenario-replay tests, plus a real OpenAI client (Responses API
+function calling) behind the same `LLMClient` protocol. CI stays offline against
+a deterministic rule-based stand-in; a live 3-day replay had the model choose
+1-2 tool calls per candidate for $0.004 total under a $0.05 per-run cap. Real
+listing data (RentCast) is the next milestone. See [SPEC.md](SPEC.md).
 
 ## Try it (no API key needed)
 
@@ -29,6 +31,16 @@ uv run python -m rentscout replay \
 
 `replay` simulates three days of Seattle listings and writes one Markdown
 digest per day to `runs/`, including each run's spend against its caps.
+
+With the real model (needs `OPENAI_API_KEY`):
+
+```bash
+uv sync --extra openai
+uv run python -m rentscout replay --llm openai \
+  --scenario fixtures/scenarios/basic \
+  --profile examples/profile.toml \
+  --state /tmp/rentscout-live.db --out runs/live/
+```
 
 Or drive it interactively in the browser (stdlib server, still zero deps):
 

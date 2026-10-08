@@ -69,16 +69,22 @@ def investigate(
         )
         if not reply.tool_calls:
             return InvestigationNote(listing.id, reply.text, calls_made)
+        made = [
+            {"id": c.id, "name": c.name, "arguments": c.arguments}
+            for c in reply.tool_calls
+        ]
         messages.append(
-            {
-                "role": "assistant",
-                "content": json.dumps(
-                    [{"name": c.name, "arguments": c.arguments} for c in reply.tool_calls]
-                ),
-            }
+            {"role": "assistant", "content": json.dumps(made), "tool_calls": made}
         )
         for call in reply.tool_calls:
             result = registry.execute(call, guard)
             calls_made += 1
-            messages.append({"role": "tool", "name": call.name, "content": result})
+            messages.append(
+                {
+                    "role": "tool",
+                    "name": call.name,
+                    "tool_call_id": call.id,
+                    "content": result,
+                }
+            )
     return InvestigationNote(listing.id, "(investigation hit turn limit)", calls_made)

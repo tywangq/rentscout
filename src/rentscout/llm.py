@@ -4,7 +4,7 @@ Prompts embed their machine-readable payload in a fenced ```json block; the
 real model reads it as context, and the offline stand-ins parse it. That keeps
 the message flow identical whether or not a real API is on the other end.
 
-The real OpenAI client lands in M1 behind this same protocol.
+OpenAIClient is the real model behind this same protocol (Responses API).
 """
 
 from __future__ import annotations
@@ -25,6 +25,7 @@ class Usage:
 class ToolCall:
     name: str
     arguments: dict
+    id: str = ""
 
 
 @dataclass(frozen=True)
@@ -158,3 +159,76 @@ class RuleBasedLLM:
             f"{commute} ${listing['price']}/mo vs ${profile['max_price']} budget. "
             f"Triage: {payload['triage']['reason']}."
         )
+
+
+class OpenAIClient:
+    """Real model via the OpenAI Responses API.
+
+    Translates the loop's provider-neutral messages into Responses input items:
+    an assistant turn that made tool calls becomes function_call items, and a
+    tool result becomes a function_call_output tied to the same call_id.
+    """
+
+    def __init__(self, model: str = "gpt-4.1-mini", client=None) -> None:
+        if client is None:
+            from openai import OpenAI  # optional dependency: rentscout[openai]
+
+            client = OpenAI()
+        self.model = model
+        self._client = client
+
+    def complete(
+        self, messages: list[dict], tools: list[dict] | None = None
+    ) -> LLMReply:
+        kwargs = {"model": self.model, "input": to_responses_input(messages)}
+        if tools:
+            kwargs["tools"] = tools
+        resp = self._client.responses.create(**kwargs)
+        calls = tuple(
+            ToolCall(
+                name=item.name,
+                arguments=_parse_arguments(item.arguments),
+                id=item.call_id,
+            )
+            for item in resp.output
+            if item.type == "function_call"
+        )
+        usage = Usage(resp.usage.input_tokens, resp.usage.output_tokens)
+        return LLMReply(text=resp.output_text or "", tool_calls=calls, usage=usage)
+
+
+def to_responses_input(messages: list[dict]) -> list[dict]:
+    items: list[dict] = []
+    for msg in messages:
+        role = msg["role"]
+        if role == "assistant" and msg.get("tool_calls"):
+            for call in msg["tool_calls"]:
+                items.append(
+                    {
+                        "type": "function_call",
+                        "call_id": call["id"],
+                        "name": call["name"],
+                        "arguments": json.dumps(call["arguments"]),
+                    }
+                )
+        elif role == "tool":
+            items.append(
+                {
+                    "type": "function_call_output",
+                    "call_id": msg["tool_call_id"],
+                    "output": msg["content"],
+                }
+            )
+        else:
+            items.append({"role": role, "content": msg["content"]})
+    return items
+
+
+def _parse_arguments(raw: str) -> dict:
+    """A model can emit malformed JSON; hand the tool an empty dict and let
+    the registry report bad arguments back to the model instead of crashing."""
+    try:
+        parsed = json.loads(raw or "{}")
+    except json.JSONDecodeError:
+        return {}
+    return parsed if isinstance(parsed, dict) else {}

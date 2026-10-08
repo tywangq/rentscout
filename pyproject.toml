@@ -6,6 +6,9 @@ readme = "README.md"
 requires-python = ">=3.12"
 dependencies = []
 
+[project.optional-dependencies]
+openai = ["openai>=1.66"]
+
 [dependency-groups]
 dev = ["pytest>=8"]
 
