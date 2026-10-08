@@ -1,20 +1,18 @@
 # 🐕‍🦺 RentScout
 
-A bounded autonomous agent that searches Seattle rentals once a day: it pulls
-real listings, remembers what it has seen, judges each new one against a
-renter's preferences, investigates the best with real routing, and publishes a
-short ranked digest, all under **budgets enforced in code, not in the prompt**.
+**Set your search once. RentScout scouts Seattle rentals every morning and comes back with what is worth a look.** A bounded tool-calling agent that pulls real listings, remembers what it has seen, judges each new one against your preferences, and investigates the best with real routing, all under budgets enforced in code, not in the prompt.
 
-**Live page: [tywangq.github.io/rentscout](https://tywangq.github.io/rentscout/)**,
-updated every morning by GitHub Actions: today's picks with each pick's verdicts,
-note and tool-call trace, the run history, spend against the caps, and the
-injection evals.
+**🐕‍🦺 [Live page](https://tywangq.github.io/rentscout/)** — rebuilt every morning by GitHub Actions: today's picks on a map, how each score was computed, every tool call the agent made, and spend against its caps · **[injection evals](#what-the-evals-found)** — the score moved out of the model after the suite caught it obeying a listing.
 
 > **[LeaseHound](https://github.com/tywangq/leasehound) 🐕** — you hand it a document; it examines what is in front of it.
 >
 > **RentScout 🐕‍🦺** — you send it out; it decides where to look and comes back with a report.
 >
 > One is a workflow. The other is an agent. Building both is the point.
+
+![The live page: what the agent did with the day's listings, the picks on a map, and a pick with its verdicts, its score's terms and the agent's note](docs/live-page.png)
+
+> 🏠 RentScout only reads: it never contacts a landlord or applies for anything. Listings come from RentCast; commutes are measured by bike, because the routing service has no transit.
 
 Same domain, opposite control flow: LeaseHound is one document and one run
 through a fixed pipeline, because a legal verdict should be reproducible;
