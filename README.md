@@ -1,4 +1,4 @@
-# RentScout
+# 🐕‍🦺 RentScout
 
 A bounded autonomous agent that searches Seattle rentals once a day: it pulls
 real listings, remembers what it has seen, judges each new one against a
@@ -10,10 +10,16 @@ updated every morning by GitHub Actions: today's picks with each pick's verdicts
 note and tool-call trace, the run history, spend against the caps, and the
 injection evals.
 
-RentScout is the agent counterpart to [LeaseHound](https://github.com/tywangq/leasehound),
-a fixed-pipeline lease scanner: same domain, opposite control flow. Together they
-argue one point: know when a problem needs a workflow and when it needs a
-(bounded) agent.
+> **[LeaseHound](https://github.com/tywangq/leasehound) 🐕** — you hand it a document; it examines what is in front of it.
+>
+> **RentScout 🐕‍🦺** — you send it out; it decides where to look and comes back with a report.
+>
+> One is a workflow. The other is an agent. Building both is the point.
+
+Same domain, opposite control flow: LeaseHound is one document and one run
+through a fixed pipeline, because a legal verdict should be reproducible;
+RentScout keeps state across days and chooses its own lookups, because which
+listings deserve a closer look cannot be written down in advance.
 
 ## How a day runs
 

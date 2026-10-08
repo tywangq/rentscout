@@ -55,3 +55,26 @@ def test_funnel_counts_each_stage_from_the_trace(store, run_day, tmp_path):
     for fragment in ("<b>7</b> New listings today", "<b>4</b> Pass hard limits",
                      "<b>4</b> Judged by the model", "<b>4</b> Investigated with tools"):
         assert fragment in html
+
+
+def test_breakdown_terms_sum_to_the_pipelines_score(store, run_day, tmp_path):
+    import re
+
+    run_day(1)
+    profile, caps = load_profile(PROFILE)
+    html = render_site(str(tmp_path / "state.db"), profile, caps, str(tmp_path))
+    breakdowns = re.findall(r"<div class='breakdown'[^>]*>(.*?)</div>", html)
+    scores = re.findall(r"<span class='score'>(\d+)/10</span>", html)
+    assert breakdowns and len(breakdowns) == len(scores)
+    for terms, score in zip(breakdowns, scores):
+        total = re.search(r"= (\d+)(?: capped at (\d+))?", terms)
+        assert int(total.group(2) or total.group(1)) == int(score)
+
+
+def test_map_payload_cannot_close_its_script_tag():
+    from rentscout.site import _map_html
+
+    html = _map_html({"points": [{"rank": 1, "lat": 47.6, "lon": -122.3,
+                                  "label": "</script><script>alert(1)</script>"}],
+                      "anchor": None})
+    assert "</script><script>alert(1)" not in html

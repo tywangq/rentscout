@@ -20,6 +20,8 @@ from pathlib import Path
 from .pipeline import MAX_PICKS
 from .profile import BudgetCaps, SearchProfile
 from .report import build_report
+from .state import Store
+from .triage import score_parts
 
 REPO = "https://github.com/tywangq/rentscout"
 
@@ -99,7 +101,21 @@ def _eval_summary(eval_dir: Path) -> str:
     )
 
 
-def _pick_html(p: dict) -> str:
+def _breakdown_html(profile: SearchProfile, row: sqlite3.Row, verdicts: dict) -> str:
+    """The score's terms as the pipeline computed them (triage.score_parts)."""
+    parts = score_parts(profile, Store._row_to_listing(row), verdicts)
+    total = sum(d for _, d in parts)
+    terms = "".join(
+        f"<span class='term {'neg' if d < 0 else 'pos'}'>{'+' if d > 0 and i else ''}"
+        f"{'−' if d < 0 else ''}{abs(d)} {escape(label)}</span>"
+        for i, (label, d) in enumerate(parts)
+    )
+    capped = f" capped at {max(0, min(10, total))}" if total != max(0, min(10, total)) else ""
+    return (f"<div class='breakdown' title='computed in code, not by the model'>"
+            f"{terms}<span class='term total'>= {total}{capped}</span></div>")
+
+
+def _pick_html(p: dict, rank: int, profile: SearchProfile) -> str:
     l, tri, inv = p["listing"], p["triage"], p["investigation"]
     if inv is None:
         inv = {"note": "Not investigated this run: the budget or tool quota ran out "
@@ -121,13 +137,14 @@ def _pick_html(p: dict) -> str:
         for c in inv.get("tool_log", [])
     ) or "<li>no tool calls recorded</li>"
     return (
-        "<article class='pick'>"
-        f"<header><h3>{escape(l['address'])}</h3>"
+        f"<article class='pick' id='pick-{rank}'>"
+        f"<header><h3><span class='rank'>{rank}</span>{escape(l['address'])}</h3>"
         f"<span class='score'>{escape(str(tri.get('score', '?')))}/10</span></header>"
         f"<p class='facts'>{escape(l['neighborhood'] or '')} &middot; "
         f"{escape(' · '.join(facts))} &middot; "
         f"<a href='{escape(l['url'])}' rel='noopener nofollow'>map</a></p>"
         f"<div class='chips'>{verdicts}</div>"
+        f"{_breakdown_html(profile, l, tri.get('verdicts', {}))}"
         f"<p>{escape(inv.get('note', ''))}</p>"
         f"<details><summary>Agent trace ({len(inv.get('tool_log', []))} tool calls)</summary>"
         f"<ul>{calls}</ul></details>"
@@ -156,6 +173,59 @@ def _funnel(conn: sqlite3.Connection, run_id: str, min_score: int) -> list[tuple
     ]
 
 
+def _map_points(picks: list[dict], conn: sqlite3.Connection, anchor: str) -> dict | None:
+    points = []
+    for i, p in enumerate(picks, 1):
+        attrs = json.loads(p["listing"]["attributes"] or "{}")
+        if attrs.get("lat") is None or attrs.get("lon") is None:
+            continue
+        points.append({"rank": i, "lat": attrs["lat"], "lon": attrs["lon"],
+                       "label": f"{p['listing']['address']} · ${p['listing']['price']:,}"})
+    if not points:
+        return None
+    row = conn.execute("SELECT lat, lon FROM geocode_cache WHERE address = ?", (anchor,)).fetchone()
+    return {"points": points,
+            "anchor": {"lat": row["lat"], "lon": row["lon"], "label": anchor} if row else None}
+
+
+def _map_html(data: dict | None) -> str:
+    if not data:
+        return ""
+    # json.dumps output, with "<" escaped so listing text cannot close the script tag.
+    payload = json.dumps(data).replace("<", "\\u003c")
+    return f"""<div id="map" role="img" aria-label="Map of today's picks"></div>
+<p class="muted">Numbers match the picks below; the dark marker is the commute anchor.
+Tiles &copy; OpenStreetMap contributors.</p>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script>
+(function () {{
+  var d = {payload};
+  if (!window.L) return;
+  var map = L.map("map", {{ scrollWheelZoom: false }});
+  L.tileLayer("https://tile.openstreetmap.org/{{z}}/{{x}}/{{y}}.png",
+    {{ maxZoom: 18, attribution: "&copy; OpenStreetMap contributors" }}).addTo(map);
+  var bounds = [];
+  d.points.forEach(function (p) {{
+    var icon = L.divIcon({{ className: "pin", html: String(p.rank), iconSize: [26, 26] }});
+    var m = L.marker([p.lat, p.lon], {{ icon: icon, title: p.label }}).addTo(map);
+    m.on("click", function () {{
+      var el = document.getElementById("pick-" + p.rank);
+      if (el) {{ el.scrollIntoView({{ behavior: "smooth", block: "start" }}); el.classList.add("flash");
+        setTimeout(function () {{ el.classList.remove("flash"); }}, 1200); }}
+    }});
+    bounds.push([p.lat, p.lon]);
+  }});
+  if (d.anchor) {{
+    L.marker([d.anchor.lat, d.anchor.lon], {{ icon: L.divIcon({{ className: "pin anchor",
+      html: "\u2605", iconSize: [26, 26] }}), title: d.anchor.label }}).addTo(map);
+    bounds.push([d.anchor.lat, d.anchor.lon]);
+  }}
+  map.fitBounds(bounds, {{ padding: [24, 24] }});
+}})();
+</script>"""
+
+
 def _funnel_html(stages: list[tuple[str, int, str]]) -> str:
     top = max((n for _, n, _ in stages), default=0) or 1
     bars = "".join(
@@ -176,6 +246,7 @@ def render_site(
     month = (run["run_date"] if run else date.today().isoformat())[:7]
     picks = _picks(conn, run["run_id"], caps.min_score_to_investigate) if run else []
     funnel = _funnel(conn, run["run_id"], caps.min_score_to_investigate) if run else []
+    map_data = _map_points(picks, conn, profile.commute_anchor)
     spend, calls = _month_spend(conn, month), _api_calls(conn, month)
     conn.close()
     rows, _ = build_report(db_path, profile)
@@ -189,7 +260,7 @@ def render_site(
         f"<td class='num'>{r.unsourced_notes}</td><td class='num'>{r.hedged_notes}</td></tr>"
         for r in reversed(rows[-14:])
     )
-    picks_html = "".join(_pick_html(p) for p in picks) or "<p>No picks in the latest run.</p>"
+    picks_html = "".join(_pick_html(p, i, profile) for i, p in enumerate(picks, 1)) or "<p>No picks in the latest run.</p>"
     run_line = (
         f"Latest run {escape(run['run_date'])}, status {escape(run['status'])}, "
         f"${run['dollars'] or 0:.4f} spent." if run else "No completed run yet."
@@ -200,10 +271,10 @@ def render_site(
 <title>RentScout Live</title>
 <style>
 :root {{ --bg:#fbfaf8; --fg:#1d1d1b; --muted:#6b6a66; --card:#fff; --line:#e4e1db;
-  --accent:#2f6f5e; --yes:#d8efe4; --no:#f6dede; --unk:#ecebe7; }}
+  --accent:#0f766e; --yes:#ccfbf1; --no:#f6dede; --unk:#ecebe7; }}
 @media (prefers-color-scheme: dark) {{ :root:not([data-theme="light"]) {{
   --bg:#161615; --fg:#ecebe7; --muted:#a3a19b; --card:#1f1f1d; --line:#33322f;
-  --accent:#7fc4ae; --yes:#1f3b30; --no:#432626; --unk:#2c2b29; }} }}
+  --accent:#5eead4; --yes:#134e4a; --no:#432626; --unk:#2c2b29; }} }}
 body {{ background:var(--bg); color:var(--fg); margin:0;
   font:15px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }}
 main {{ max-width:880px; margin:0 auto; padding:24px 16px 64px; }}
@@ -217,6 +288,16 @@ h3 {{ font-size:16px; margin:0; }} .muted, .facts {{ color:var(--muted); }}
 .stage-label b {{ font-size:16px; font-variant-numeric:tabular-nums; }}
 .bar {{ height:10px; border-radius:5px; background:var(--unk); overflow:hidden; }}
 .bar span {{ display:block; height:100%; background:var(--accent); border-radius:5px; }}
+#map {{ height:340px; border-radius:10px; border:1px solid var(--line); margin:6px 0; }}
+.pin {{ background:var(--accent); color:#fff; border-radius:50%; font:600 13px/26px sans-serif;
+  text-align:center; box-shadow:0 1px 3px rgba(0,0,0,.35); }}
+.pin.anchor {{ background:#1d1d1b; }}
+.rank {{ display:inline-block; min-width:22px; height:22px; margin-right:8px; border-radius:50%;
+  background:var(--accent); color:var(--bg); font-size:12px; line-height:22px; text-align:center; }}
+.breakdown {{ display:flex; flex-wrap:wrap; gap:4px; margin:4px 0 8px; font-size:12px; }}
+.term {{ padding:1px 7px; border-radius:4px; border:1px solid var(--line); font-variant-numeric:tabular-nums; }}
+.term.neg {{ color:#b42318; }} .term.total {{ font-weight:600; border-color:var(--accent); }}
+.flash {{ outline:2px solid var(--accent); }}
 .pick {{ background:var(--card); border:1px solid var(--line); border-radius:10px;
   padding:14px 16px; margin:12px 0; }}
 .pick header {{ display:flex; justify-content:space-between; gap:12px; align-items:baseline; }}
@@ -231,7 +312,7 @@ th, td {{ border-bottom:1px solid var(--line); padding:6px 8px; text-align:left;
 .num {{ text-align:right; font-variant-numeric:tabular-nums; }}
 a {{ color:var(--accent); }}
 </style></head><body><main>
-<h1>RentScout Live</h1>
+<h1>\U0001F415\u200d\U0001F9BA RentScout Live</h1>
 <p class="muted">A bounded autonomous agent searching Seattle rentals once a day on real
 listings (RentCast), real routing (OpenRouteService) and a real model, under budgets
 enforced in code. <a href="{REPO}">Source</a>.</p>
@@ -243,6 +324,8 @@ enforced in code. <a href="{REPO}">Source</a>.</p>
 </div>
 <h2>What the agent did today</h2>
 {_funnel_html(funnel) if funnel else "<p>No completed run yet.</p>"}
+<h2>Where they are</h2>
+{_map_html(map_data) or "<p class='muted'>No coordinates for today's picks.</p>"}
 <h2>Today's picks</h2>
 <p class="muted">Profile: {escape(profile.name)}, up to ${profile.max_price:,}, commute to
 {escape(profile.commute_anchor)} measured by bike (routing has no transit).

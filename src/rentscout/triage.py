@@ -49,23 +49,35 @@ class TriageScore:
     verdicts: tuple[tuple[str, str], ...] = ()
 
 
-def compute_score(profile: SearchProfile, listing: Listing, verdicts: dict[str, str]) -> int:
-    """The score is code, not model output: price, area and verdicts.
+def score_parts(
+    profile: SearchProfile, listing: Listing, verdicts: dict[str, str]
+) -> list[tuple[str, int]]:
+    """The score's terms, in order. The public page renders these directly, so
+    the breakdown it shows cannot drift from the score the pipeline used.
 
     Each yes adds a point and each no takes one away. The first version only
     rewarded yes from a base of 5, so cheap listings that failed the renter's
     size preference still reached 10/10 on the first live cold start.
     """
-    score = 3
+    parts = [("base", 3)]
     if listing.price <= 0.9 * profile.max_price:
-        score += 2
+        parts.append(("price well under max", 2))
     elif listing.price <= profile.max_price:
-        score += 1
+        parts.append(("price under max", 1))
     if profile.neighborhoods and set(profile.neighborhoods) & listing.area_names():
-        score += 1
-    score += sum(1 for v in verdicts.values() if v == "yes")
-    score -= sum(1 for v in verdicts.values() if v == "no")
-    return max(0, min(10, score))
+        parts.append(("target neighborhood", 1))
+    yes = sum(1 for v in verdicts.values() if v == "yes")
+    no = sum(1 for v in verdicts.values() if v == "no")
+    if yes:
+        parts.append((f"{yes} preference{'s' * (yes != 1)} met", yes))
+    if no:
+        parts.append((f"{no} preference{'s' * (no != 1)} failed", -no))
+    return parts
+
+
+def compute_score(profile: SearchProfile, listing: Listing, verdicts: dict[str, str]) -> int:
+    """The score is code, not model output: price, area and verdicts."""
+    return max(0, min(10, sum(d for _, d in score_parts(profile, listing, verdicts))))
 
 
 def reply_schema(profile: SearchProfile) -> dict:
