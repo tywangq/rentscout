@@ -203,6 +203,10 @@ def _pick_html(p: dict, rank: int, profile: SearchProfile) -> str:
     if attrs.get("days_on_market") is not None:
         days = attrs["days_on_market"]
         facts.append(f"{days} day{'s' * (days != 1)} listed")
+    if attrs.get("year_built"):
+        # Shown when RentCast has it; it is missing for most Seattle listings
+        # (41 of a 50-listing sample), so it is a fact on the card, not a score input.
+        facts.append(f"built {attrs['year_built']}")
     mark = {"yes": "\u2713", "no": "\u2717", "unknown": "?"}
     verdicts = "".join(
         # "label: detail" preferences show the label; the full text is the tooltip.
