@@ -21,7 +21,7 @@ from urllib.parse import quote, quote_plus
 from pathlib import Path
 
 from .pipeline import MAX_PICKS
-from .profile import BudgetCaps, SearchProfile
+from .profile import BudgetCaps, SearchProfile, rentcast_cap
 from .report import build_report
 from .state import Store
 from .triage import SCORE_RULE, score_parts
@@ -472,7 +472,7 @@ enforced in code. <a href="{REPO}">Source</a>.</p>
 <div class="stats">
   <div class="stat"><b>${spend:.3f} / ${caps.monthly_dollars:.2f}</b>model spend this month</div>
   <div class="stat"><b>${caps.per_run_dollars:.2f}</b>hard cap per run</div>
-  <div class="stat"><b>{calls} / {caps.rentcast_requests_per_month}</b>RentCast requests this month</div>
+  <div class="stat"><b>{calls} / {rentcast_cap(caps, month)}</b>RentCast requests this month</div>
 </div>
 <h2>What the agent did today</h2>
 {_funnel_html(funnel) if funnel else "<p>No completed run yet.</p>"}

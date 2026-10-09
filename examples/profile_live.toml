@@ -37,7 +37,11 @@ monthly_dollars = 2.0
 # 8, not 6: under the score formula with -1 per failed preference, 56 of the
 # first 60 judged listings cleared 6, so the threshold no longer selected.
 min_score_to_investigate = 8
-# 30, not 40, for 2026-10 only: the counter lives in each state database, and
-# this month's local tests and the v1/v2 Actions databases already used about 8
-# of the account's 50 free requests. Raise back to 40 in November.
-rentcast_requests_per_month = 30
+# 40 of the account's 50 free requests a month: a listing fetch a day (~30) plus
+# about 10 for monthly market statistics on the target zips (market.py reserves
+# one request per remaining day before spending any on market data).
+rentcast_requests_per_month = 40
+# October 2026 is capped at 30: the counter lives in each state database, and
+# that month's local tests and earlier Actions databases had already used about
+# 13 requests the current database cannot see. November returns to 40 by itself.
+rentcast_cap_overrides = { "2026-10" = 30 }

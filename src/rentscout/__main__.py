@@ -12,7 +12,7 @@ from datetime import date, timedelta
 
 from .llm import LLMClient, OpenAIClient, RuleBasedLLM
 from .pipeline import daily_run
-from .profile import load_profile
+from .profile import load_profile, rentcast_cap
 from .routing import ORSCommute
 from .sources.fixture import FixtureSource
 from .sources.rentcast import RentCastError, RentCastSource
@@ -86,7 +86,7 @@ def _run_live(args: argparse.Namespace) -> None:
             api_key=api_key,
             store=store,
             month=run_date[:7],
-            monthly_cap=caps.rentcast_requests_per_month,
+            monthly_cap=rentcast_cap(caps, run_date[:7]),
             min_beds=profile.min_beds,
             max_beds=profile.max_beds,
             max_price=profile.max_price,
@@ -103,6 +103,14 @@ def _run_live(args: argparse.Namespace) -> None:
             else {}
         )
         registry = build_registry(store, commute)
+        from .market import refresh_market_stats
+
+        refreshed = refresh_market_stats(
+            source, store, profile, date.fromisoformat(run_date),
+            rentcast_cap(caps, run_date[:7]),
+        )
+        if refreshed:
+            print(f"market stats refreshed for {len(refreshed)} zips: {', '.join(refreshed)}")
         try:
             result = daily_run(
                 source=source,
@@ -121,7 +129,7 @@ def _run_live(args: argparse.Namespace) -> None:
             f"{run_date}: {result.new_count} new, {len(result.pick_ids)} picks, "
             f"${result.spent:.6f} spent, RentCast "
             f"{store.api_calls(run_date[:7], 'rentcast')}/"
-            f"{caps.rentcast_requests_per_month} this month [{status}]"
+            f"{rentcast_cap(caps, run_date[:7])} this month [{status}]"
             f" -> {result.digest_path}"
         )
     finally:

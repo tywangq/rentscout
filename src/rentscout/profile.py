@@ -34,6 +34,9 @@ class BudgetCaps:
     min_score_to_investigate: int = 6
     # External API calls are a budget too: RentCast's free tier is 50/month.
     rentcast_requests_per_month: int = 40
+    # Per-month overrides ("YYYY-MM" -> cap) for a month whose account usage the
+    # state database cannot see, so no one has to remember to put the cap back.
+    rentcast_cap_overrides: tuple[tuple[str, int], ...] = ()
     # Cold start: the first live day had 261 fresh candidates, and triaging them
     # all in one call spent the whole $0.05 run cap before any investigation.
     max_triage_per_run: int = 60  # freshest first; the rest are recorded, not scored
@@ -65,7 +68,14 @@ def load_profile(path: str | Path) -> tuple[SearchProfile, BudgetCaps]:
         monthly_dollars=float(b["monthly_dollars"]),
         min_score_to_investigate=int(b.get("min_score_to_investigate", 6)),
         rentcast_requests_per_month=int(b.get("rentcast_requests_per_month", 40)),
+        rentcast_cap_overrides=tuple(
+            (str(k), int(v)) for k, v in (b.get("rentcast_cap_overrides") or {}).items()
+        ),
         max_triage_per_run=int(b.get("max_triage_per_run", 60)),
         triage_budget_share=float(b.get("triage_budget_share", 0.6)),
     )
     return profile, caps
+
+
+def rentcast_cap(caps: BudgetCaps, month: str) -> int:
+    return dict(caps.rentcast_cap_overrides).get(month, caps.rentcast_requests_per_month)

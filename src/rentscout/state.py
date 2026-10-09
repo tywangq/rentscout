@@ -79,6 +79,11 @@ CREATE TABLE IF NOT EXISTS geocode_cache (
     lat REAL NOT NULL,
     lon REAL NOT NULL
 );
+CREATE TABLE IF NOT EXISTS market_stats (
+    zip TEXT PRIMARY KEY,
+    month TEXT NOT NULL,
+    data TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS runs (
     run_id TEXT PRIMARY KEY,
     run_date TEXT NOT NULL,
@@ -251,6 +256,21 @@ class Store:
             if attrs.get("zip") == zip_code and attrs.get("price_per_sqft"):
                 values.append(float(attrs["price_per_sqft"]))
         return values
+
+    # -- market statistics (RentCast /markets, one request per zip per month) --
+
+    def market_stats(self, zip_code: str) -> dict | None:
+        row = self._conn.execute(
+            "SELECT month, data FROM market_stats WHERE zip = ?", (zip_code,)
+        ).fetchone()
+        return {"month": row["month"], **json.loads(row["data"])} if row else None
+
+    def save_market_stats(self, zip_code: str, month: str, data: dict) -> None:
+        self._conn.execute(
+            "INSERT OR REPLACE INTO market_stats VALUES (?, ?, ?)",
+            (zip_code, month, json.dumps(data)),
+        )
+        self._conn.commit()
 
     # -- routing caches -----------------------------------------------------
 

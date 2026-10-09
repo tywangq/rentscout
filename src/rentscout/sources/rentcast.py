@@ -24,6 +24,7 @@ from ..state import Store
 
 API = "rentcast"
 ENDPOINT = "https://api.rentcast.io/v1/listings/rental/long-term"
+MARKETS = "https://api.rentcast.io/v1/markets"
 PAGE_LIMIT = 500  # RentCast's maximum per request
 RETRYABLE = {429, 500, 502, 503, 504}
 
@@ -94,8 +95,24 @@ class RentCastSource:
         self.snapshot = total is not None and total <= len(records)
         return [self._to_listing(r) for r in records]
 
-    def _get(self) -> tuple[str, int | None]:
-        url = f"{ENDPOINT}?{urllib.parse.urlencode(self._params, safe=':')}"
+    def market_rental_stats(self, zip_code: str) -> dict:
+        """Rental market statistics for one zip (RentCast /markets): overall and
+        per-bedroom median rent and rent per sqft. Same quota as listings."""
+        body, _ = self._get(MARKETS, {"zipCode": zip_code, "dataType": "Rental",
+                                      "historyRange": "1"})
+        rental = json.loads(body).get("rentalData") or {}
+        keep = ("medianRent", "medianRentPerSquareFoot", "totalListings", "lastUpdatedDate")
+        return {
+            **{k: rental.get(k) for k in keep},
+            "byBedrooms": {
+                str(b["bedrooms"]): {k: b.get(k) for k in keep if k != "lastUpdatedDate"}
+                for b in rental.get("dataByBedrooms", [])
+            },
+        }
+
+    def _get(self, endpoint: str = ENDPOINT, params: dict | None = None) -> tuple[str, int | None]:
+        params = self._params if params is None else params
+        url = f"{endpoint}?{urllib.parse.urlencode(params, safe=':')}"
         request = urllib.request.Request(
             url, headers={"X-Api-Key": self._key, "Accept": "application/json"}
         )

@@ -60,10 +60,13 @@ class ToolRegistry:
 
 
 def area_stats(store: Store, listing_id: str) -> dict | str:
-    """Same-zip $/sqft context for a listing, or a sentence saying why there is none.
+    """Area $/sqft context for a listing, or a sentence saying why there is none.
 
-    Used twice: by the compare_to_area tool during investigation, and in the
-    triage payload, so the model judging 'good value for the area' has the area.
+    Prefers RentCast's market statistics for the zip and the listing's bedroom
+    count (the whole market, refreshed monthly); falls back to the zip overall,
+    then to the median of listings this agent has tracked (pre-filtered to the
+    profile's limits, so biased). Used by the compare_to_area tool and in the
+    triage payload, so 'good value for the area' is judged against the area.
     """
     row = store.listing(listing_id)
     if row is None:
@@ -72,15 +75,34 @@ def area_stats(store: Store, listing_id: str) -> dict | str:
     zip_code = attrs.get("zip")
     if not zip_code:
         return "no zip code for this listing; no area to compare against"
-    peers = store.area_price_per_sqft(zip_code, listing_id)
-    if len(peers) < 3:
-        return f"only {len(peers)} other tracked listings in {zip_code}; too few to compare"
-    median = statistics.median(peers)
-    stats = {"zip": zip_code, "peers": len(peers), "median_price_per_sqft": round(median, 2)}
     own = attrs.get("price_per_sqft")
+    beds = int(row["beds"] or 0)
+    market = store.market_stats(zip_code)
+    stats: dict | None = None
+    if market:
+        same = (market.get("byBedrooms") or {}).get(str(beds)) or {}
+        if same.get("medianRentPerSquareFoot") and (same.get("totalListings") or 0) >= 5:
+            stats = {"source": f"RentCast market data, {market['month']}",
+                     "scope": f"{same.get('totalListings')} {beds}-bedroom listings",
+                     "median_price_per_sqft": same["medianRentPerSquareFoot"],
+                     "median_rent_same_beds": same.get("medianRent")}
+        elif market.get("medianRentPerSquareFoot"):
+            stats = {"source": f"RentCast market data, {market['month']}",
+                     "scope": f"{market.get('totalListings')} listings, all sizes",
+                     "median_price_per_sqft": market["medianRentPerSquareFoot"]}
+    if stats is None:
+        peers = store.area_price_per_sqft(zip_code, listing_id)
+        if len(peers) < 3:
+            return f"only {len(peers)} other tracked listings in {zip_code}; too few to compare"
+        stats = {"source": "tracked listings",
+                 "scope": f"{len(peers)} others, within this profile's price and "
+                          "bedroom limits",
+                 "median_price_per_sqft": round(statistics.median(peers), 2)}
+    stats["zip"] = zip_code
     if own:
         stats["price_per_sqft"] = own
-        stats["vs_median_pct"] = round((own - median) / median * 100)
+        stats["vs_median_pct"] = round((own - stats["median_price_per_sqft"])
+                                       / stats["median_price_per_sqft"] * 100)
     return stats
 
 
@@ -100,9 +122,10 @@ def build_registry(
         stats = area_stats(store, listing_id)
         if isinstance(stats, str):
             return stats
-        head = (f"{stats['peers']} other tracked listings in {stats['zip']} (all within "
-                f"this profile's price and bedroom limits): median "
+        head = (f"{stats['source']} for {stats['zip']} ({stats['scope']}): median "
                 f"${stats['median_price_per_sqft']:.2f}/sqft")
+        if stats.get("median_rent_same_beds"):
+            head += f", median rent ${stats['median_rent_same_beds']:,}"
         own = stats.get("price_per_sqft")
         if own is None:
             return head + "; this listing has no square footage, so it cannot be compared"

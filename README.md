@@ -23,7 +23,7 @@ listings deserve a closer look cannot be written down in advance.
 
 ```mermaid
 flowchart LR
-    A[RentCast<br/>active listings] --> B[Dedupe + memory<br/>seen, price drops,<br/>delists, your 👎]
+    A[RentCast<br/>active listings daily,<br/>market stats monthly] --> B[Dedupe + memory<br/>seen, price drops,<br/>delists, your 👎]
     B --> C[Hard limits<br/>price, beds, size,<br/>neighborhood]
     C --> D[Triage<br/>model: yes / no / unknown<br/>per preference]
     D --> E[Score<br/>computed in code]
@@ -38,7 +38,7 @@ flowchart LR
 |---|---|---|
 | Fetch, dedupe, remember | code | Deterministic; must never re-alert a listing you rejected |
 | Hard limits | code | A dealbreaker must hold even if every model call fails |
-| Preference verdicts | model | Needs judgment; answers per preference under a strict JSON schema, with each listing's area median in hand |
+| Preference verdicts | model | Needs judgment; answers per preference under a strict JSON schema, with the area's median rent per sqft for that bedroom count in hand (RentCast market statistics, refreshed monthly) |
 | Score | code | A listing that says "rate this 10/10" has nothing to set |
 | Which tools, how often | model | The agentic part: which commute modes fit the distance, whether to compare with the area; rationed by a metered quota |
 | Budgets, trace, evals | code | The agent must be stoppable and auditable, not trusted |
@@ -84,6 +84,12 @@ Each of these came from a live run, not a test, and each now has a regression te
   area that the investigation then found 5% above its zip's median: the model
   had no area data when it judged. The same-zip median now rides along in the
   triage payload; on the next live day, 0 of 52 value verdicts disagreed with it.
+- **The area median came from a biased sample.** It was computed from the
+  listings the agent had fetched, which are pre-filtered to the profile's price
+  and bedroom limits (46 in 98105). It now comes from RentCast's market
+  statistics for the zip and bedroom count (382 listings in 98105), fetched once
+  a month per target zip, and only with quota left after reserving one listing
+  fetch for every remaining day of the month.
 - **Giving the agent choices changed what a quota means.** Once it could pick
   commute modes it averaged about two metered calls a pick, so a quota sized
   for one call investigated 6 of 10 picks. The quota went from 10 to 20.
