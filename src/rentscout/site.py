@@ -28,7 +28,7 @@ from .triage import SCORE_RULE, score_parts
 
 REPO = "https://github.com/tywangq/rentscout"
 PAGE_URL = "https://tywangq.github.io/rentscout/"
-SOCIAL_TITLE = "RentScout \u2014 daily rental-search agent"
+SOCIAL_TITLE = "RentScout \u2014 daily rental-search AI agent"
 SOCIAL_DESCRIPTION = (
     "A bounded agent that scouts Seattle rentals every morning on live data: the "
     "model judges and picks its tools, code sets the score and the budget."
