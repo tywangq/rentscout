@@ -73,7 +73,12 @@ def _run_live(args: argparse.Namespace) -> None:
     api_key = os.environ.get("RENTCAST_API_KEY")
     if not api_key:
         raise SystemExit("RENTCAST_API_KEY is not set (put it in .env)")
-    run_date = date.today().isoformat()
+    # Seattle's date, not the runner's: Actions runs in UTC, so an evening run in
+    # Seattle was dated the next day (2026-10-08 runs showed as 10-09).
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    run_date = datetime.now(ZoneInfo("America/Los_Angeles")).date().isoformat()
     profile, caps = load_profile(args.profile)
     store = Store(args.state)
     try:

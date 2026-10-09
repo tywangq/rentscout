@@ -11,7 +11,8 @@ name: daily
 # was halted by the old triage budgeting; v3 dropped v2 after the hard size and
 # bedroom limits and the new score formula, so they are exercised on a cold start;
 # v4 dropped v3 when the commute anchor moved to Amazon Spheres, so no day on the
-# page mixes commutes to two different places.
+# page mixes commutes to two different places; v5 dropped v4 so the page starts
+# from a run with area-aware triage, the short preference labels, and Seattle dates.
 
 on:
   schedule:
@@ -48,8 +49,8 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: state
-          key: state-v4-${{ github.run_id }}
-          restore-keys: state-v4-
+          key: state-v5-${{ github.run_id }}
+          restore-keys: state-v5-
 
       - name: Live run
         id: live
@@ -72,7 +73,7 @@ jobs:
         uses: actions/cache/save@v4
         with:
           path: state
-          key: state-v4-${{ github.run_id }}
+          key: state-v5-${{ github.run_id }}
 
       - name: Build page
         run: |

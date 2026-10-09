@@ -52,6 +52,14 @@ class TriageScore:
     verdicts: tuple[tuple[str, str], ...] = ()
 
 
+# The page prints this beside the score terms. It lives next to score_parts so a
+# change to the rule and to its description are one edit.
+SCORE_RULE = (
+    "Start at 3; +2 if the rent is at most 90% of the budget (+1 if under it); +1 in a "
+    "target neighborhood; +1 for each preference met and \u22121 for each failed; capped at 10."
+)
+
+
 def score_parts(
     profile: SearchProfile, listing: Listing, verdicts: dict[str, str]
 ) -> list[tuple[str, int]]:

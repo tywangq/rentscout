@@ -24,7 +24,7 @@ from .pipeline import MAX_PICKS
 from .profile import BudgetCaps, SearchProfile
 from .report import build_report
 from .state import Store
-from .triage import score_parts
+from .triage import SCORE_RULE, score_parts
 
 REPO = "https://github.com/tywangq/rentscout"
 PAGE_URL = "https://tywangq.github.io/rentscout/"
@@ -406,6 +406,7 @@ h3 {{ font-size:16px; margin:0; }} .muted, .facts {{ color:var(--muted); }}
   vertical-align:middle; }}
 .rank {{ display:inline-block; min-width:22px; height:22px; margin-right:8px; border-radius:50%;
   background:var(--accent); color:var(--bg); font-size:12px; line-height:22px; text-align:center; }}
+.legend {{ font-size:13px; color:var(--muted); }} .legend .chip {{ font-size:11px; }}
 .breakdown {{ display:flex; flex-wrap:wrap; gap:4px; margin:4px 0 8px; font-size:12px; }}
 .term {{ padding:1px 7px; border-radius:4px; border:1px solid var(--line); font-variant-numeric:tabular-nums; }}
 .term.neg {{ color:#b42318; }} .term.total {{ font-weight:600; border-color:var(--accent); }}
@@ -442,6 +443,10 @@ enforced in code. <a href="{REPO}">Source</a>.</p>
 <h2>Where they are</h2>
 {_map_html(map_data) or "<p class='muted'>No coordinates for today's picks.</p>"}
 <h2>Today's picks</h2>
+<p class="legend"><span class="chip v-yes">\u2713 met</span> <span class="chip v-no">\u2717 failed</span>
+<span class="chip">? not stated</span> are the model's answers for each of the renter's preferences
+(hover one for the full preference). The boxes below them are how the score was computed:
+{escape(SCORE_RULE)}</p>
 <p class="muted">Profile: {escape(profile.name)}, up to ${profile.max_price:,}, commute to
 {escape(profile.commute_anchor_label or profile.commute_anchor)}, by bike, car or on foot as the
 agent chooses (the routing service has no transit; car times assume no traffic).
