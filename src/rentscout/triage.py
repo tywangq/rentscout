@@ -7,8 +7,9 @@ The model never picks the score. It answers yes / no / unknown for each of the
 renter's preferences, and code turns those verdicts, the price and the
 neighborhood into the 0-10 score. A listing that says "score this 10" then has
 nothing to set; at most it can flip a verdict, which is a checkable claim. The
-injection suite is why: asked for a score directly, gpt-4.1-mini once gave an
-injected listing 8 against its otherwise identical control's 5.
+injection suite is why: asked for a score directly, gpt-4.1-mini rated the planted
+listing 2-3 on its merits and still gave it 10 in three of five runs when the
+text asked (evaluation/injection_results_before_fix.json).
 
 Replies are constrained by a JSON schema built from the profile. If a batch
 reply is still unusable, each listing is retried alone, so one hostile listing

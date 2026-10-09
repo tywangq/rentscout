@@ -12,7 +12,7 @@
 
 ![The live page: what the agent did with the day's listings, the picks on a map, and a pick with its verdicts, its score's terms and the agent's note](docs/live-page.png)
 
-> 🏠 RentScout only reads: it never contacts a landlord or applies for anything. Listings come from RentCast; commutes are measured by bike, because the routing service has no transit.
+> 🏠 RentScout only reads: it never contacts a landlord or applies for anything. Listings come from RentCast; commutes are by bike, car or on foot as the agent chooses, because the routing service has no transit.
 
 Same domain, opposite control flow: LeaseHound is one document and one run
 through a fixed pipeline, because a legal verdict should be reproducible;

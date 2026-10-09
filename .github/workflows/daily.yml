@@ -27,6 +27,7 @@ permissions:
   contents: read
   pages: write
   id-token: write
+  actions: write # keepalive below
 
 concurrency:
   group: daily
@@ -86,6 +87,15 @@ jobs:
           path: site
       - id: deploy
         uses: actions/deploy-pages@v4
+
+      # GitHub disables scheduled workflows after 60 days without repository
+      # activity, and a daily run makes no commits. Re-enabling through the API
+      # resets that clock without a dummy commit.
+      - name: Keep the schedule alive
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow enable daily.yml --repo "${{ github.repository }}"
 
       # The page still publishes a failed day honestly; then the job goes red
       # so the failure shows up in the Actions tab and email.

@@ -201,7 +201,8 @@ def _pick_html(p: dict, rank: int, profile: SearchProfile) -> str:
     if l["sqft"]:
         facts.append(f"{l['sqft']} sqft")
     if attrs.get("days_on_market") is not None:
-        facts.append(f"{attrs['days_on_market']} days listed")
+        days = attrs["days_on_market"]
+        facts.append(f"{days} day{'s' * (days != 1)} listed")
     mark = {"yes": "\u2713", "no": "\u2717", "unknown": "?"}
     verdicts = "".join(
         # "label: detail" preferences show the label; the full text is the tooltip.
