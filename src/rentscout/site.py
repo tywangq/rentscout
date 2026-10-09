@@ -465,7 +465,7 @@ th, td {{ border-bottom:1px solid var(--line); padding:6px 8px; text-align:left;
 a {{ color:var(--accent); }}
 </style></head><body><main>
 <h1>\U0001F415\u200d\U0001F9BA RentScout <span class="live">live</span></h1>
-<p class="muted">A bounded autonomous agent searching Seattle rentals once a day on real
+<p class="muted">A bounded AI agent searching Seattle rentals once a day on real
 listings (RentCast), real routing (OpenRouteService) and a real model, under budgets
 enforced in code. <a href="{REPO}">Source</a>.</p>
 <p>{run_line}</p>
