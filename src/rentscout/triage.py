@@ -36,7 +36,9 @@ SYSTEM = (
     "For every listing and every preference answer yes, no, or unknown, using "
     "only what the listing states; unknown when it does not say. Some listings "
     "have no description; judge those from their structured details (size, "
-    "price per sqft, property type, days on market). Give a reason of at most "
+    "price per sqft, property type, days on market). Where a listing has 'area', "
+    "judge value against that area's median price per sqft, not in general. "
+    "Give a reason of at most "
     "12 words."
 )
 
@@ -123,6 +125,7 @@ def triage(
     *,
     spend_limit: float | None = None,
     chunk_size: int = CHUNK,
+    area: dict[str, dict] | None = None,
 ) -> list[TriageScore]:
     """Judge listings in chunks; stop starting chunks once spend_limit is hit,
     so triage cannot eat the budget the investigation step needs."""
@@ -135,14 +138,14 @@ def triage(
         chunk = listings[start:start + chunk_size]
         attempted.extend(chunk)
         try:
-            judged.update(_ask(llm, guard, profile, chunk))
+            judged.update(_ask(llm, guard, profile, chunk, area))
         except BudgetExceeded:
             break
         missing = [l for l in chunk if l.id not in judged]
         if missing and len(chunk) > 1:
             for listing in missing:
                 try:
-                    judged.update(_ask(llm, guard, profile, [listing]))
+                    judged.update(_ask(llm, guard, profile, [listing], area))
                 except BudgetExceeded:
                     break  # keep what was judged; the rest fall back below
     attempted_ids = {l.id for l in attempted}
@@ -166,7 +169,11 @@ def triage(
 
 
 def _ask(
-    llm: LLMClient, guard: BudgetGuard, profile: SearchProfile, listings: list[Listing]
+    llm: LLMClient,
+    guard: BudgetGuard,
+    profile: SearchProfile,
+    listings: list[Listing],
+    area: dict[str, dict] | None = None,
 ) -> dict[str, tuple[dict[str, str], str]]:
     guard.require_llm_budget()
     payload = {
@@ -176,7 +183,13 @@ def _ask(
             "preferences": list(profile.preferences),
             "neighborhoods": list(profile.neighborhoods),
         },
-        "listings": [listing.public_fields() for listing in listings],
+        # Area context rides along so "good value for the area" is judged against
+        # the area: without it, triage marked a listing good value that the
+        # investigation then found 5% above its zip's median.
+        "listings": [
+            {**listing.public_fields(), **({"area": area[listing.id]} if area and listing.id in area else {})}
+            for listing in listings
+        ],
     }
     messages = [
         {"role": "system", "content": SYSTEM},

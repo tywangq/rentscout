@@ -16,10 +16,11 @@ from .digest import DigestData, Pick, render_digest
 from .filters import hard_filter
 from .investigate import investigate
 from .llm import LLMClient
+from .models import Listing
 from .profile import BudgetCaps, SearchProfile
 from .sources.base import ListingSource
 from .state import Store
-from .tools import ToolRegistry
+from .tools import ToolRegistry, area_stats
 from .triage import FALLBACK_SCORE, TriageScore, triage
 
 
@@ -35,6 +36,15 @@ class RunResult:
     halted: bool
     new_count: int
     pick_ids: tuple[str, ...]
+
+
+def _area_context(store: Store, listings: list[Listing]) -> dict[str, dict]:
+    context = {}
+    for listing in listings:
+        stats = area_stats(store, listing.id)
+        if isinstance(stats, dict):
+            context[listing.id] = stats
+    return context
 
 
 def daily_run(
@@ -108,6 +118,7 @@ def _run(
                 for ts in triage(
                     llm, guard, profile, candidates,
                     spend_limit=caps.per_run_dollars * caps.triage_budget_share,
+                    area=_area_context(store, candidates),
                 )
             }
             for ts in scores.values():

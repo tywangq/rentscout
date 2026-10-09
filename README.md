@@ -27,7 +27,7 @@ flowchart LR
     B --> C[Hard limits<br/>price, beds, size,<br/>neighborhood]
     C --> D[Triage<br/>model: yes / no / unknown<br/>per preference]
     D --> E[Score<br/>computed in code]
-    E --> F[Investigate top picks<br/>model chooses tools:<br/>commute, price history]
+    E --> F[Investigate top picks<br/>model chooses tools:<br/>commute by bike / car / walk,<br/>area comparison, price history]
     F --> G[Digest + trace<br/>public page]
     BG[Budget guard<br/>$ per run, $ per month,<br/>tool quota, API quota] -.-> D
     BG -.-> F
@@ -38,9 +38,9 @@ flowchart LR
 |---|---|---|
 | Fetch, dedupe, remember | code | Deterministic; must never re-alert a listing you rejected |
 | Hard limits | code | A dealbreaker must hold even if every model call fails |
-| Preference verdicts | model | Needs judgment; answers per preference under a strict JSON schema |
+| Preference verdicts | model | Needs judgment; answers per preference under a strict JSON schema, with each listing's area median in hand |
 | Score | code | A listing that says "rate this 10/10" has nothing to set |
-| Which tools, how often | model | The agentic part, rationed by a metered quota |
+| Which tools, how often | model | The agentic part: which commute modes fit the distance, whether to compare with the area; rationed by a metered quota |
 | Budgets, trace, evals | code | The agent must be stoppable and auditable, not trusted |
 
 ## What the evals found
@@ -80,6 +80,13 @@ Each of these came from a live run, not a test, and each now has a regression te
 - **An unparseable HTTP status line crashed a run and left it "running".**
   urllib does not wrap every failure; network errors are now retried, a crashing
   tool becomes an error message for the model, and any failure closes the run.
+- **"Good value" was judged blind.** Triage marked a listing good value for its
+  area that the investigation then found 5% above its zip's median: the model
+  had no area data when it judged. The same-zip median now rides along in the
+  triage payload; on the next live day, 0 of 52 value verdicts disagreed with it.
+- **Giving the agent choices changed what a quota means.** Once it could pick
+  commute modes it averaged about two metered calls a pick, so a quota sized
+  for one call investigated 6 of 10 picks. The quota went from 10 to 20.
 - **The routing host moved** (api.openrouteservice.org was retired for
   api.heigit.org) and an API key lost its last character in a copy-paste; both
   showed up as 403s and were diagnosed from the trace.
@@ -125,7 +132,8 @@ against scraping displayed data.
 - One user, one city. Listings could be shared across users (one RentCast request
   a day serves all of Seattle); model cost would scale per user and would need a
   per-user cap under a global one.
-- Commute is by bike: OpenRouteService has no transit profile.
+- No transit commutes: OpenRouteService has no transit profile, so the agent
+  chooses among bike, car (free-flow, no traffic) and walking.
 - No agent framework. The loop is a plain tool-calling loop because the loop is
   the part worth reading.
 

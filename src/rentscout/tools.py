@@ -59,6 +59,31 @@ class ToolRegistry:
             return f"ERROR: {call.name} failed ({type(exc).__name__}); treat it as unknown"
 
 
+def area_stats(store: Store, listing_id: str) -> dict | str:
+    """Same-zip $/sqft context for a listing, or a sentence saying why there is none.
+
+    Used twice: by the compare_to_area tool during investigation, and in the
+    triage payload, so the model judging 'good value for the area' has the area.
+    """
+    row = store.listing(listing_id)
+    if row is None:
+        return f"unknown listing {listing_id!r}"
+    attrs = json.loads(row["attributes"] or "{}")
+    zip_code = attrs.get("zip")
+    if not zip_code:
+        return "no zip code for this listing; no area to compare against"
+    peers = store.area_price_per_sqft(zip_code, listing_id)
+    if len(peers) < 3:
+        return f"only {len(peers)} other tracked listings in {zip_code}; too few to compare"
+    median = statistics.median(peers)
+    stats = {"zip": zip_code, "peers": len(peers), "median_price_per_sqft": round(median, 2)}
+    own = attrs.get("price_per_sqft")
+    if own:
+        stats["price_per_sqft"] = own
+        stats["vs_median_pct"] = round((own - median) / median * 100)
+    return stats
+
+
 def build_registry(
     store: Store, commutes: dict[str, int] | Callable[[str], str]
 ) -> ToolRegistry:
@@ -72,23 +97,16 @@ def build_registry(
         return str(minutes) if minutes is not None else "unknown"
 
     def compare_to_area(listing_id: str) -> str:
-        row = store.listing(listing_id)
-        if row is None:
-            return f"unknown listing {listing_id!r}"
-        attrs = json.loads(row["attributes"] or "{}")
-        zip_code = attrs.get("zip")
-        if not zip_code:
-            return "no zip code for this listing; no area to compare against"
-        peers = store.area_price_per_sqft(zip_code, listing_id)
-        if len(peers) < 3:
-            return f"only {len(peers)} other tracked listings in {zip_code}; too few to compare"
-        median = statistics.median(peers)
-        head = (f"{len(peers)} other tracked listings in {zip_code} (all within this "
-                f"profile's price and bedroom limits): median ${median:.2f}/sqft")
-        own = attrs.get("price_per_sqft")
-        if not own:
+        stats = area_stats(store, listing_id)
+        if isinstance(stats, str):
+            return stats
+        head = (f"{stats['peers']} other tracked listings in {stats['zip']} (all within "
+                f"this profile's price and bedroom limits): median "
+                f"${stats['median_price_per_sqft']:.2f}/sqft")
+        own = stats.get("price_per_sqft")
+        if own is None:
             return head + "; this listing has no square footage, so it cannot be compared"
-        diff = (own - median) / median * 100
+        diff = stats["vs_median_pct"]
         side = "below" if diff < 0 else "above"
         return head + f"; this listing ${own:.2f}/sqft, {abs(diff):.0f}% {side} the median"
 
