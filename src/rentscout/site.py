@@ -11,11 +11,13 @@ Published by the daily workflow to GitHub Pages. Two rules shape it:
 
 from __future__ import annotations
 
+import hashlib
 import json
+import re
 import sqlite3
 from datetime import date, timedelta
 from html import escape
-from urllib.parse import quote_plus
+from urllib.parse import quote, quote_plus
 from pathlib import Path
 
 from .pipeline import MAX_PICKS
@@ -25,6 +27,21 @@ from .state import Store
 from .triage import score_parts
 
 REPO = "https://github.com/tywangq/rentscout"
+PAGE_URL = "https://tywangq.github.io/rentscout/"
+SOCIAL_TITLE = "RentScout \u2014 daily rental-search agent"
+SOCIAL_DESCRIPTION = (
+    "A bounded agent that scouts Seattle rentals every morning on live data: the "
+    "model judges and picks its tools, code sets the score and the budget."
+)
+
+
+def _card_version() -> str:
+    """Hash of the card PNG, so a new card means a new og:image URL (LinkedIn
+    caches by URL; the portfolio card stayed stale until it did this)."""
+    from importlib import resources
+
+    data = resources.files("rentscout.data").joinpath("card.png").read_bytes()
+    return hashlib.sha256(data).hexdigest()[:10]
 
 
 def _latest_ok_run(conn: sqlite3.Connection) -> sqlite3.Row | None:
@@ -154,6 +171,25 @@ def _breakdown_html(profile: SearchProfile, row: sqlite3.Row, verdicts: dict) ->
             f"{terms}<span class='term total'>= {total}{capped}</span></div>")
 
 
+_MODE_WORD = {"bike": "bike", "car": "car", "walk": "foot", None: "bike"}
+
+
+def _plain_step(call: dict) -> str:
+    """One tool call as a sentence a non-engineer can read; raw calls stay below."""
+    name, args = call.get("name", ""), call.get("arguments", {}) or {}
+    result = str(call.get("result", ""))
+    if name == "commute_time":
+        how = _MODE_WORD.get(args.get("mode"), args.get("mode") or "bike")
+        return f"Checked the commute by {escape(how)}: <b>{escape(result)}</b>"
+    if name == "compare_to_area":
+        # Drop the parenthetical scope note; keep the comparison.
+        short = re.sub(r" \(all within[^)]*\)", "", result)
+        return f"Compared the price with the area: {escape(short)}"
+    if name == "price_history":
+        return f"Looked up the price history: {escape(result)}"
+    return f"{escape(name)}: {escape(result)}"
+
+
 def _pick_html(p: dict, rank: int, profile: SearchProfile) -> str:
     l, tri, inv = p["listing"], p["triage"], p["investigation"]
     if inv is None:
@@ -166,15 +202,20 @@ def _pick_html(p: dict, rank: int, profile: SearchProfile) -> str:
         facts.append(f"{l['sqft']} sqft")
     if attrs.get("days_on_market") is not None:
         facts.append(f"{attrs['days_on_market']} days listed")
+    mark = {"yes": "\u2713", "no": "\u2717", "unknown": "?"}
     verdicts = "".join(
-        f"<span class='chip v-{escape(v)}'>{escape(k)}: {escape(v)}</span>"
+        # "label: detail" preferences show the label; the full text is the tooltip.
+        f"<span class='chip v-{escape(v)}' title='{escape(k)}: {escape(v)}'>"
+        f"{mark.get(v, '?')} {escape(k.split(':', 1)[0])}</span>"
         for k, v in sorted(tri.get("verdicts", {}).items())
     )
-    calls = "".join(
+    log = inv.get("tool_log", [])
+    steps = "".join(f"<li>{_plain_step(c)}</li>" for c in log) or "<li>no lookups made</li>"
+    raw = "".join(
         f"<li><code>{escape(c.get('name', ''))}({escape(json.dumps(c.get('arguments', {})))})</code>"
         f" &rarr; {escape(str(c.get('result', '')))}</li>"
-        for c in inv.get("tool_log", [])
-    ) or "<li>no tool calls recorded</li>"
+        for c in log
+    )
     return (
         f"<article class='pick' id='pick-{rank}'>"
         f"<header><h3><span class='rank'>{rank}</span>{escape(l['address'])}</h3>"
@@ -184,13 +225,18 @@ def _pick_html(p: dict, rank: int, profile: SearchProfile) -> str:
         f"<a href='{escape(l['url'])}' rel='noopener nofollow'>map</a> &middot; "
         # RentCast returns no listing URL or photos; a search on the address
         # finds the listing itself on whichever site is carrying it.
+        f"find the listing: <a href='https://www.zillow.com/homes/{quote(l['address'])}_rb/' "
+        f"rel='noopener nofollow'>Zillow</a> or "
         f"<a href='https://www.google.com/search?q={quote_plus(l['address'] + ' for rent')}' "
-        f"rel='noopener nofollow'>find the listing</a></p>"
+        f"rel='noopener nofollow'>search</a></p>"
         f"<div class='chips'>{verdicts}</div>"
         f"{_breakdown_html(profile, l, tri.get('verdicts', {}))}"
         f"<p>{escape(inv.get('note', ''))}</p>"
-        f"<details><summary>Agent trace ({len(inv.get('tool_log', []))} tool calls)</summary>"
-        f"<ul>{calls}</ul></details>"
+        f"<details><summary>What the agent checked ({len(log)} "
+        f"lookup{'s' * (len(log) != 1)})</summary><ul class='steps'>{steps}</ul>"
+        + (f"<details class='raw'><summary>raw tool calls</summary><ul>{raw}</ul></details>"
+           if raw else "")
+        + "</details>"
         "</article>"
     )
 
@@ -320,7 +366,16 @@ def render_site(
     return f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>RentScout — daily rental-search agent</title>
+<title>{SOCIAL_TITLE}</title>
+<meta name="description" content="{escape(SOCIAL_DESCRIPTION)}">
+<meta property="og:type" content="website">
+<meta property="og:url" content="{PAGE_URL}">
+<meta property="og:title" content="{SOCIAL_TITLE}">
+<meta property="og:description" content="{escape(SOCIAL_DESCRIPTION)}">
+<meta property="og:image" content="{PAGE_URL}card.png?v={_card_version()}">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
 <link rel="icon" type="image/png" href="favicon.png">
 <style>
 :root {{ --bg:#fbfaf8; --fg:#1d1d1b; --muted:#6b6a66; --card:#fff; --line:#e4e1db;
@@ -361,7 +416,10 @@ h3 {{ font-size:16px; margin:0; }} .muted, .facts {{ color:var(--muted); }}
 .chips {{ display:flex; flex-wrap:wrap; gap:6px; margin:6px 0; }}
 .chip {{ font-size:12px; padding:2px 8px; border-radius:999px; background:var(--unk); }}
 .v-yes {{ background:var(--yes); }} .v-no {{ background:var(--no); }}
-details {{ margin-top:6px; }} code {{ font-size:12.5px; word-break:break-word; }}
+details {{ margin-top:6px; }}
+.steps {{ margin:6px 0; padding-left:18px; }} .steps li {{ margin:3px 0; }}
+details.raw {{ margin:4px 0 0 18px; font-size:12px; color:var(--muted); }}
+.chip.v-no {{ text-decoration:none; }} code {{ font-size:12.5px; word-break:break-word; }}
 .table-wrap {{ overflow-x:auto; }}
 table {{ border-collapse:collapse; width:100%; font-size:13.5px; }}
 th, td {{ border-bottom:1px solid var(--line); padding:6px 8px; text-align:left; vertical-align:top; }}

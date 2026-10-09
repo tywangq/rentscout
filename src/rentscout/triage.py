@@ -68,10 +68,11 @@ def score_parts(
         parts.append(("target neighborhood", 1))
     yes = sum(1 for v in verdicts.values() if v == "yes")
     no = sum(1 for v in verdicts.values() if v == "no")
+    # The delta carries the count ("+4 preferences met"), so the label does not.
     if yes:
-        parts.append((f"{yes} preference{'s' * (yes != 1)} met", yes))
+        parts.append((f"preference{'s' * (yes != 1)} met", yes))
     if no:
-        parts.append((f"{no} preference{'s' * (no != 1)} failed", -no))
+        parts.append((f"preference{'s' * (no != 1)} failed", -no))
     return parts
 
 

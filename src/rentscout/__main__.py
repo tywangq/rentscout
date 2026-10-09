@@ -188,9 +188,10 @@ def _run_site(args: argparse.Namespace) -> None:
     # A PNG rather than an SVG emoji: Safari ignores SVG favicons (LeaseHound
     # learned this first; see its scripts/render_favicon.py).
     from importlib import resources
-    (out / "favicon.png").write_bytes(
-        resources.files("rentscout.data").joinpath("favicon.png").read_bytes()
-    )
+    for asset in ("favicon.png", "card.png"):  # card.png: the og:image share card
+        (out / asset).write_bytes(
+            resources.files("rentscout.data").joinpath(asset).read_bytes()
+        )
     print(f"site -> {out / 'index.html'}")
 
 

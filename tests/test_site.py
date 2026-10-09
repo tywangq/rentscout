@@ -88,3 +88,12 @@ def test_earlier_picks_still_listed_are_shown_and_delisted_ones_are_not(store, r
     earlier = html.split("Still available from this week", 1)[1]
     assert "416 E Olive Way" in earlier          # fx-101, picked day 1, still listed
     assert "5017 Ballard Ave NW" not in earlier  # fx-102, delisted on day 2
+
+
+def test_share_card_url_is_versioned_by_the_image(store, run_day, tmp_path):
+    import re
+
+    run_day(1)
+    profile, caps = load_profile(PROFILE)
+    html = render_site(str(tmp_path / "state.db"), profile, caps, str(tmp_path))
+    assert re.search(r'og:image" content="https://tywangq\.github\.io/rentscout/card\.png\?v=[0-9a-f]{10}"', html)

@@ -12,10 +12,12 @@ max_beds = 2      # more is almost always a room in a shared house
 min_sqft = 450    # hard; "at least 600" below stays a soft preference
 neighborhoods = ["Capitol Hill", "Fremont", "Wallingford", "Ballard", "University District", "Queen Anne", "South Lake Union"]
 excluded_keywords = []
+# "label: detail": the page shows the label on each chip, the full text on hover;
+# the model sees the whole string.
 preferences = [
-  "at least 600 sq ft",
+  "big enough: at least 600 sq ft",
   "good value: low price per square foot for the area",
-  "apartment or condo rather than a single-family house",
+  "apartment or condo: not a single-family house",
   "fresh listing: under a week on the market",
 ]
 # Amazon Spheres: a few blocks from the old anchor (2101 4th Ave), so commutes
