@@ -78,3 +78,13 @@ def test_map_payload_cannot_close_its_script_tag():
                                   "label": "</script><script>alert(1)</script>"}],
                       "anchor": None})
     assert "</script><script>alert(1)" not in html
+
+
+def test_earlier_picks_still_listed_are_shown_and_delisted_ones_are_not(store, run_day, tmp_path):
+    run_day(1)
+    run_day(2)  # fx-102 delists on day 2; fx-101 and fx-107 stay listed
+    profile, caps = load_profile(PROFILE)
+    html = render_site(str(tmp_path / "state.db"), profile, caps, str(tmp_path))
+    earlier = html.split("Still available from this week", 1)[1]
+    assert "416 E Olive Way" in earlier          # fx-101, picked day 1, still listed
+    assert "5017 Ballard Ave NW" not in earlier  # fx-102, delisted on day 2

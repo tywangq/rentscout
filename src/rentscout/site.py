@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
-from datetime import date
+from datetime import date, timedelta
 from html import escape
 from urllib.parse import quote_plus
 from pathlib import Path
@@ -29,7 +29,10 @@ REPO = "https://github.com/tywangq/rentscout"
 
 def _latest_ok_run(conn: sqlite3.Connection) -> sqlite3.Row | None:
     return conn.execute(
-        "SELECT * FROM runs WHERE status IN ('ok', 'halted') ORDER BY started_at DESC LIMIT 1"
+        "SELECT * FROM runs WHERE status IN ('ok', 'halted')"
+        # run_date first: started_at is wall-clock, and two runs in one second
+        # (a replay, a test) would otherwise pick an arbitrary "latest".
+        " ORDER BY run_date DESC, started_at DESC, rowid DESC LIMIT 1"
     ).fetchone()
 
 
@@ -53,6 +56,41 @@ def _picks(conn: sqlite3.Connection, run_id: str, min_score: int) -> list[dict]:
             continue
         picks.append({"listing": listing, "triage": tri,
                       "investigation": investigated.get(lid)})
+    picks.sort(key=lambda p: (-p["triage"].get("score", 0), p["listing"]["price"]))
+    return picks[:MAX_PICKS]
+
+
+def _recent_picks(
+    conn: sqlite3.Connection, latest: sqlite3.Row, min_score: int, exclude: set[str],
+    days: int = 7,
+) -> list[dict]:
+    """Investigated picks from the past week's earlier runs that are still listed.
+
+    After the cold start a day brings a dozen new listings, so 'today' alone can
+    be empty; a renter still wants the good ones from Tuesday that are not gone.
+    """
+    since = (date.fromisoformat(latest["run_date"]) - timedelta(days=days - 1)).isoformat()
+    rows = conn.execute(
+        "SELECT d.run_id, d.listing_id, d.action, d.detail FROM decisions d"
+        " JOIN runs r ON r.run_id = d.run_id"
+        " WHERE r.run_date >= ? AND d.run_id != ? AND d.action IN ('triaged', 'investigated')"
+        " ORDER BY r.run_date, r.started_at, d.rowid",
+        (since, latest["run_id"]),
+    ).fetchall()
+    triaged, investigated = {}, {}
+    for row in rows:  # later runs overwrite earlier ones for the same listing
+        (triaged if row["action"] == "triaged" else investigated)[row["listing_id"]] = (
+            json.loads(row["detail"]))
+    picks = []
+    for lid, inv in investigated.items():
+        tri = triaged.get(lid, {})
+        if lid in exclude or tri.get("score", 0) < min_score:
+            continue
+        listing = conn.execute(
+            "SELECT * FROM listings WHERE id = ? AND status = 'active'", (lid,)
+        ).fetchone()
+        if listing is not None:
+            picks.append({"listing": listing, "triage": tri, "investigation": inv})
     picks.sort(key=lambda p: (-p["triage"].get("score", 0), p["listing"]["price"]))
     return picks[:MAX_PICKS]
 
@@ -252,8 +290,11 @@ def render_site(
     run = _latest_ok_run(conn)
     month = (run["run_date"] if run else date.today().isoformat())[:7]
     picks = _picks(conn, run["run_id"], caps.min_score_to_investigate) if run else []
+    earlier = _recent_picks(
+        conn, run, caps.min_score_to_investigate, {p["listing"]["id"] for p in picks}
+    ) if run else []
     funnel = _funnel(conn, run["run_id"], caps.min_score_to_investigate) if run else []
-    map_data = _map_points(picks, conn, profile.commute_anchor, profile.commute_anchor_label)
+    map_data = _map_points(picks + earlier, conn, profile.commute_anchor, profile.commute_anchor_label)
     spend, calls = _month_spend(conn, month), _api_calls(conn, month)
     conn.close()
     rows, _ = build_report(db_path, profile)
@@ -267,7 +308,11 @@ def render_site(
         f"<td class='num'>{r.unsourced_notes}</td><td class='num'>{r.hedged_notes}</td></tr>"
         for r in reversed(rows[-14:])
     )
-    picks_html = "".join(_pick_html(p, i, profile) for i, p in enumerate(picks, 1)) or "<p>No picks in the latest run.</p>"
+    picks_html = "".join(_pick_html(p, i, profile) for i, p in enumerate(picks, 1)) or (
+        "<p>No new picks today; see the ones still available below.</p>"
+        if earlier else "<p>No picks in the latest run.</p>")
+    earlier_html = "".join(
+        _pick_html(p, i, profile) for i, p in enumerate(earlier, len(picks) + 1))
     run_line = (
         f"Latest run {escape(run['run_date'])}, status {escape(run['status'])}, "
         f"${run['dollars'] or 0:.4f} spent." if run else "No completed run yet."
@@ -343,6 +388,7 @@ enforced in code. <a href="{REPO}">Source</a>.</p>
 agent chooses (the routing service has no transit; car times assume no traffic).
 The model answers yes / no / unknown per preference; the score is computed in code.</p>
 {picks_html}
+{"<h2>Still available from this week</h2><p class='muted'>Picked on an earlier day and not delisted since; numbers continue on the map.</p>" + earlier_html if earlier else ""}
 <h2>Run history</h2>
 <div class="table-wrap"><table><thead><tr><th>Date</th><th>Status</th>
 <th class="num">Listings</th><th class="num">Triaged</th><th class="num">Investigated</th>

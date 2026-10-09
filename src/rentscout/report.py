@@ -44,7 +44,7 @@ def build_report(db_path: str, profile: SearchProfile) -> tuple[list[RunRow], di
         soft_by_run[v.run_id] = soft_by_run.get(v.run_id, 0) + bool(v.soft)
 
     rows = []
-    for run in conn.execute("SELECT * FROM runs ORDER BY started_at"):
+    for run in conn.execute("SELECT * FROM runs ORDER BY run_date, started_at, rowid"):
         decisions = conn.execute(
             "SELECT listing_id, action, detail FROM decisions WHERE run_id = ?",
             (run["run_id"],),

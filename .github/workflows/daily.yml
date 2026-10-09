@@ -9,7 +9,9 @@ name: daily
 # next run starts a fresh database and re-triages the feed once.
 # The key prefix is versioned: v2 dropped the first database, whose cold start
 # was halted by the old triage budgeting; v3 dropped v2 after the hard size and
-# bedroom limits and the new score formula, so they are exercised on a cold start.
+# bedroom limits and the new score formula, so they are exercised on a cold start;
+# v4 dropped v3 when the commute anchor moved to Amazon Spheres, so no day on the
+# page mixes commutes to two different places.
 
 on:
   schedule:
@@ -45,8 +47,8 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: state
-          key: state-v3-${{ github.run_id }}
-          restore-keys: state-v3-
+          key: state-v4-${{ github.run_id }}
+          restore-keys: state-v4-
 
       - name: Live run
         id: live
@@ -69,7 +71,7 @@ jobs:
         uses: actions/cache/save@v4
         with:
           path: state
-          key: state-v3-${{ github.run_id }}
+          key: state-v4-${{ github.run_id }}
 
       - name: Build page
         run: |
