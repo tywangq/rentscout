@@ -174,6 +174,31 @@ def _breakdown_html(profile: SearchProfile, row: sqlite3.Row, verdicts: dict) ->
 _MODE_WORD = {"bike": "bike", "car": "car", "walk": "foot", None: "bike"}
 
 
+def _profile_html(profile: SearchProfile) -> str:
+    """What the agent is searching for, read from the live profile so the page
+    cannot describe a search the profile no longer runs."""
+    hard = [f"up to ${profile.max_price:,}/mo"]
+    beds = f"{profile.min_beds:g}" + (f"\u2013{profile.max_beds:g}" if profile.max_beds else "+")
+    hard.append(f"{beds} bedrooms, {profile.min_baths:g}+ bath")
+    if profile.min_sqft:
+        hard.append(f"at least {profile.min_sqft} sq ft (unknown size passes)")
+    prefs = "".join(
+        f"<li><b>{escape(p.split(':', 1)[0])}</b>"
+        + (f": {escape(p.split(':', 1)[1].strip())}" if ':' in p else "") + "</li>"
+        for p in profile.preferences
+    )
+    anchor = escape(profile.commute_anchor_label or profile.commute_anchor)
+    return f"""<details class="profile" open><summary>What it is searching for</summary>
+<dl>
+<dt>Must have (code filters these out)</dt><dd>{escape('; '.join(hard))}</dd>
+<dt>Neighborhoods</dt><dd>{escape(', '.join(profile.neighborhoods) or 'anywhere')}
+<span class="muted">(matched by zip code, so a zip shared with a neighbor counts)</span></dd>
+<dt>Would like (the model judges these)</dt><dd><ul>{prefs}</ul></dd>
+<dt>Commute</dt><dd>to {anchor}, ideally within {profile.max_commute_minutes} min (the agent weighs it, nothing filters on it), by bike, car or on foot
+as the agent chooses <span class="muted">(no transit routing; car times assume no traffic)</span></dd>
+</dl></details>"""
+
+
 def _plain_step(call: dict) -> str:
     """One tool call as a sentence a non-engineer can read; raw calls stay below."""
     name, args = call.get("name", ""), call.get("arguments", {}) or {}
@@ -410,6 +435,13 @@ h3 {{ font-size:16px; margin:0; }} .muted, .facts {{ color:var(--muted); }}
   vertical-align:middle; }}
 .rank {{ display:inline-block; min-width:22px; height:22px; margin-right:8px; border-radius:50%;
   background:var(--accent); color:var(--bg); font-size:12px; line-height:22px; text-align:center; }}
+.profile {{ background:var(--card); border:1px solid var(--line); border-radius:10px;
+  padding:10px 16px; margin:8px 0 12px; font-size:14px; }}
+.profile summary {{ font-weight:600; cursor:pointer; }}
+.profile dl {{ margin:8px 0 0; display:grid; grid-template-columns:max-content 1fr; gap:6px 16px; }}
+.profile dt {{ color:var(--muted); }} .profile dd {{ margin:0; }}
+.profile ul {{ margin:0; padding-left:18px; }}
+@media (max-width:600px) {{ .profile dl {{ grid-template-columns:1fr; }} .profile dd {{ margin-bottom:6px; }} }}
 .legend {{ font-size:13px; color:var(--muted); }} .legend .chip {{ font-size:11px; }}
 .breakdown {{ display:flex; flex-wrap:wrap; gap:4px; margin:4px 0 8px; font-size:12px; }}
 .term {{ padding:1px 7px; border-radius:4px; border:1px solid var(--line); font-variant-numeric:tabular-nums; }}
@@ -451,10 +483,7 @@ enforced in code. <a href="{REPO}">Source</a>.</p>
 <span class="chip">? not stated</span> are the model's answers for each of the renter's preferences
 (hover one for the full preference). The boxes below them are how the score was computed:
 {escape(SCORE_RULE)}</p>
-<p class="muted">Profile: {escape(profile.name)}, up to ${profile.max_price:,}, commute to
-{escape(profile.commute_anchor_label or profile.commute_anchor)}, by bike, car or on foot as the
-agent chooses (the routing service has no transit; car times assume no traffic).
-The model answers yes / no / unknown per preference; the score is computed in code.</p>
+{_profile_html(profile)}
 {picks_html}
 {"<h2>Still available from this week</h2><p class='muted'>Picked on an earlier day and not delisted since; numbers continue on the map.</p>" + earlier_html if earlier else ""}
 <h2>Run history</h2>

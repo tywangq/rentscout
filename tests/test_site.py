@@ -97,3 +97,15 @@ def test_share_card_url_is_versioned_by_the_image(store, run_day, tmp_path):
     profile, caps = load_profile(PROFILE)
     html = render_site(str(tmp_path / "state.db"), profile, caps, str(tmp_path))
     assert re.search(r'og:image" content="https://tywangq\.github\.io/rentscout/card\.png\?v=[0-9a-f]{10}"', html)
+
+
+def test_search_profile_is_read_from_the_profile(store, run_day, tmp_path):
+    run_day(1)
+    profile, caps = load_profile(PROFILE)
+    html = render_site(str(tmp_path / "state.db"), profile, caps, str(tmp_path))
+    box = html.split("What it is searching for", 1)[1].split("</details>", 1)[0]
+    assert f"up to ${profile.max_price:,}/mo" in box
+    for n in profile.neighborhoods:
+        assert n in box
+    for p in profile.preferences:
+        assert p.split(":", 1)[0] in box
