@@ -26,7 +26,11 @@ max_commute_minutes = 35
 
 [budget]
 per_run_dollars = 0.05
-investigations_per_run = 10
+# 20, not 10: commute_time is metered per mode, and once the agent could choose
+# bike, car and walk it averaged ~2 metered calls a pick, so 10 covered only 6 of
+# 10 picks (2026-10-09). The run spent $0.0198 of its $0.05 cap; ORS allows
+# 2000 routes a day.
+investigations_per_run = 20
 monthly_dollars = 2.0
 # 8, not 6: under the score formula with -1 per failed preference, 56 of the
 # first 60 judged listings cleared 6, so the threshold no longer selected.
