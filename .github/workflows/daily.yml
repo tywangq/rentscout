@@ -81,6 +81,15 @@ jobs:
           uv run python -m rentscout site \
             --state state/rentscout.db --profile examples/profile_live.toml --out site
 
+      # The README shows this image from the live site, so it is always today's
+      # page; a committed screenshot went stale within a day.
+      - name: Screenshot the page for the README
+        continue-on-error: true
+        run: >
+          google-chrome --headless=new --disable-gpu --no-sandbox --hide-scrollbars
+          --window-size=1100,1500 --virtual-time-budget=8000
+          --screenshot="$PWD/site/screenshot.png" "file://$PWD/site/index.html"
+
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

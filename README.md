@@ -10,7 +10,7 @@
 >
 > One is a workflow. The other is an agent. Building both is the point.
 
-![The live page: what the agent did with the day's listings, the picks on a map, and a pick with its verdicts, its score's terms and the agent's note](docs/live-page.png)
+![The live page: what the agent did with the day's listings, the picks on a map, and a pick with its verdicts, its score's terms and the agent's note](https://tywangq.github.io/rentscout/screenshot.png)
 
 > 🏠 RentScout only reads: it never contacts a landlord or applies for anything. Listings come from RentCast; commutes are by bike, car or on foot as the agent chooses, because the routing service has no transit.
 
