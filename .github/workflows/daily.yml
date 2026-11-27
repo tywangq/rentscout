@@ -91,12 +91,16 @@ jobs:
           --window-size=1100,1500 --virtual-time-budget=8000
           --screenshot="$PWD/site/screenshot.png" "file://$PWD/site/index.html"
 
-      - uses: actions/configure-pages@v5
-      - uses: actions/upload-pages-artifact@v3
+      # 2026-11-27: Pages actions bumped. upload-pages-artifact@v3 + deploy-pages@v4 stopped
+      # working together once GitHub forced Node 20 actions onto Node 24 (deploy failed four
+      # runs in a row with "No artifacts named github-pages"). actions/cache stays at v4 on
+      # purpose: a cache miss would reset the state and with it the RentCast quota counter.
+      - uses: actions/configure-pages@v6
+      - uses: actions/upload-pages-artifact@v5
         with:
           path: site
       - id: deploy
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
 
       # GitHub disables scheduled workflows after 60 days without repository
       # activity, and a daily run makes no commits. Re-enabling through the API
