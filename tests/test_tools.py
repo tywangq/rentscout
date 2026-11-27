@@ -134,3 +134,41 @@ def test_monthly_cap_override_applies_only_to_its_month():
     _, caps = load_profile("examples/profile_live.toml")
     assert rentcast_cap(caps, "2026-10") == 30
     assert rentcast_cap(caps, "2026-11") == 40
+
+
+def test_empty_state_mid_month_assumes_the_quota_is_mostly_spent(store):
+    from datetime import date
+
+    from rentscout.market import affordable_requests, guard_fresh_state, refresh_market_stats
+    from rentscout.profile import load_profile
+
+    profile, _ = load_profile("examples/profile_live.toml")
+    today = date(2026, 11, 20)  # 11 days left including today
+    assert guard_fresh_state(store, today, 40) == 29
+    assert store.api_calls("2026-11", "rentcast") == 29
+    # One listing fetch per remaining day is still allowed; market stats are not.
+    assert affordable_requests(store, today, 40) == 0
+    assert refresh_market_stats(_market(store), store, profile, today, 40) == []
+    # Running the guard again changes nothing.
+    assert guard_fresh_state(store, today, 40) is None
+    assert store.api_calls("2026-11", "rentcast") == 29
+
+
+def test_state_with_history_keeps_its_own_count(store):
+    from datetime import date
+
+    from rentscout.market import guard_fresh_state
+
+    store.start_run("r1", "2026-11-19")
+    store.add_api_call("2026-11", "rentcast")
+    assert guard_fresh_state(store, date(2026, 11, 20), 40) is None
+    assert store.api_calls("2026-11", "rentcast") == 1
+
+
+def test_empty_state_on_the_first_is_a_true_new_month(store):
+    from datetime import date
+
+    from rentscout.market import guard_fresh_state
+
+    assert guard_fresh_state(store, date(2026, 12, 1), 40) is None
+    assert store.api_calls("2026-12", "rentcast") == 0

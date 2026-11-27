@@ -82,6 +82,16 @@ def _run_live(args: argparse.Namespace) -> None:
     profile, caps = load_profile(args.profile)
     store = Store(args.state)
     try:
+        from .market import guard_fresh_state
+
+        seeded = guard_fresh_state(
+            store, date.fromisoformat(run_date), rentcast_cap(caps, run_date[:7])
+        )
+        if seeded is not None:
+            print(
+                f"empty state mid-month: RentCast counter set to {seeded} for {run_date[:7]};"
+                " one listing fetch a day and no market-stat refresh until next month"
+            )
         source = RentCastSource(
             api_key=api_key,
             store=store,

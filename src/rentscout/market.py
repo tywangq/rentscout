@@ -33,6 +33,31 @@ def target_zips(profile: SearchProfile) -> list[str]:
     return [z for z, areas in raw.items() if not z.startswith("_") and wanted & set(areas)]
 
 
+def guard_fresh_state(store: Store, today: date, monthly_cap: int) -> int | None:
+    """Assume the month's quota is mostly spent when the state starts empty mid-month.
+
+    The request counter lives in the state, and the state lives in the Actions cache.
+    If the cache is lost or the state is started over, the counter reads zero while
+    RentCast has already billed the month's earlier requests. That happened in
+    October 2026: the state was restarted four times on one day, each restart
+    refetched every zip's market stats, and the month went past the free tier.
+
+    So an empty state after the 1st seeds the counter at `monthly_cap - days_left`.
+    The normal accounting then allows one listing fetch per remaining day and no
+    market-stat refresh (its budget comes out at zero) until the month turns over.
+    Returns the seeded count, or None when nothing changed.
+    """
+    if today.day == 1 or store.run_count():
+        return None
+    month = today.isoformat()[:7]
+    days_left = calendar.monthrange(today.year, today.month)[1] - today.day + 1
+    floor = max(0, monthly_cap - days_left)
+    if store.api_calls(month, API) >= floor:
+        return None
+    store.raise_api_calls(month, API, floor)
+    return floor
+
+
 def affordable_requests(store: Store, today: date, monthly_cap: int) -> int:
     month = today.isoformat()[:7]
     last_day = calendar.monthrange(today.year, today.month)[1]

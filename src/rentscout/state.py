@@ -230,6 +230,18 @@ class Store:
         ).fetchone()
         return row["calls"] if row else 0
 
+    def run_count(self) -> int:
+        return self._conn.execute("SELECT COUNT(*) FROM runs").fetchone()[0]
+
+    def raise_api_calls(self, month: str, api: str, floor: int) -> None:
+        """Set this month's count to at least `floor`; never lowers it."""
+        self._conn.execute(
+            "INSERT INTO api_usage (month, api, calls) VALUES (?, ?, ?)"
+            " ON CONFLICT (month, api) DO UPDATE SET calls = MAX(calls, excluded.calls)",
+            (month, api, floor),
+        )
+        self._conn.commit()
+
     def add_api_call(self, month: str, api: str) -> None:
         self._conn.execute(
             "INSERT INTO api_usage (month, api, calls) VALUES (?, ?, 1)"

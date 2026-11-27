@@ -93,6 +93,12 @@ Each of these came from a live run, not a test, and each now has a regression te
 - **Giving the agent choices changed what a quota means.** Once it could pick
   commute modes it averaged about two metered calls a pick, so a quota sized
   for one call investigated 6 of 10 picks. The quota went from 10 to 20.
+- **Starting the state over made the agent forget what it had spent.** The RentCast
+  request count lives in the state, and the state lives in the Actions cache. On
+  2026-10-08 the state was restarted four times; each restart read the month's count
+  as zero and refetched every zip's market stats, and October went past the free tier.
+  Now an empty state after the 1st assumes the month is mostly spent: one listing
+  fetch a day and no market-stat refresh until the month turns over.
 - **The routing host moved** (api.openrouteservice.org was retired for
   api.heigit.org) and an API key lost its last character in a copy-paste; both
   showed up as 403s and were diagnosed from the trace.
